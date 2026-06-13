@@ -35,6 +35,7 @@ import app.lawnchair.LawnchairApp.Companion.showQuickstepWarningIfNecessary
 import app.lawnchair.compat.LawnchairQuickstepCompat
 import app.lawnchair.data.AppDatabase
 import app.lawnchair.data.wallpaper.service.WallpaperService
+import app.lawnchair.data.widget.WidgetPaddingRepository
 import app.lawnchair.gestures.GestureController
 import app.lawnchair.gestures.VerticalSwipeTouchController
 import app.lawnchair.gestures.config.GestureHandlerConfig
@@ -59,6 +60,7 @@ import com.android.launcher3.LauncherState
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.model.data.ItemInfo
+import com.android.launcher3.model.data.LauncherAppWidgetInfo
 import com.android.launcher3.popup.SystemShortcut
 import com.android.launcher3.shortcuts.DeepShortcutView
 import com.android.launcher3.statemanager.StateManager
@@ -76,6 +78,7 @@ import com.android.launcher3.util.TouchController
 import com.android.launcher3.views.ActivityContext
 import com.android.launcher3.views.OptionsPopupView
 import com.android.launcher3.views.OptionsPopupView.OptionItem
+import com.android.launcher3.widget.LauncherAppWidgetHostView
 import com.android.launcher3.widget.LauncherWidgetHolder
 import com.android.launcher3.widget.RoundedCornerEnforcement
 import com.android.systemui.plugins.shared.LauncherOverlayManager
@@ -226,6 +229,14 @@ class LawnchairLauncher : QuickstepLauncher() {
         preferenceManager2.backPressGestureHandler.onEach(launchIn = lifecycleScope) { handler ->
             hasBackGesture = handler !is GestureHandlerConfig.NoOp
         }
+        WidgetPaddingRepository.INSTANCE.get(this).scaleMap.onEach {
+            refreshWidgetScales()
+        }.launchIn(lifecycleScope)
+        stateManager.addStateListener(object : StateManager.StateListener<LauncherState> {
+            override fun onStateTransitionComplete(finalState: LauncherState) {
+                refreshWidgetScales()
+            }
+        })
 
         LauncherOptionsPopup.restoreMissingPopupOptions(launcher)
         LauncherOptionsPopup.migrateLegacyPreferences(launcher)
@@ -271,6 +282,27 @@ class LawnchairLauncher : QuickstepLauncher() {
             if (LawnchairApp.isRecentsEnabled) Stream.of(LawnchairShortcut.PAUSE_APPS) else Stream.empty(),
         ),
     )
+
+    /**
+     * Apply per-widget size (scale) to every widget on the workspace. Widgets are only enlarged in
+     * the [LauncherState.NORMAL] home state; in any edit/drag state they are shown at natural size
+     * so the resize frame and reorder previews stay aligned with the grid.
+     */
+    private fun refreshWidgetScales() {
+        val inNormal = isInState(LauncherState.NORMAL)
+        val scales = WidgetPaddingRepository.INSTANCE.get(this).scaleMap.value
+        workspace?.mapOverItems { info, view ->
+            if (info is LauncherAppWidgetInfo && view is LauncherAppWidgetHostView) {
+                val percent = if (inNormal) {
+                    scales[info.appWidgetId] ?: WidgetPaddingRepository.DEFAULT_SCALE
+                } else {
+                    WidgetPaddingRepository.DEFAULT_SCALE
+                }
+                WidgetPaddingRepository.applyScalePercent(view, percent)
+            }
+            false
+        }
+    }
 
     fun updateTheme() {
         if (themeProvider.colorScheme != colorScheme) {

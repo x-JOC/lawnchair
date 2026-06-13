@@ -722,6 +722,8 @@
 
     <string name="widget_unlimited_size_label">Remove size constraints</string>
     <string name="widget_unlimited_size_description">Remove the minimum and maximum size restrictions of widgets</string>
+    <string name="widget_padding_label">Widget size</string>
+    <string name="widget_padding_description">Scale the widget above or below its normal size</string>
 
     <!-- Dock settings -->
     <string name="show_hotseat_title">Show dock</string>

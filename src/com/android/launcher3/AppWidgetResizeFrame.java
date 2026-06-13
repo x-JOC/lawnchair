@@ -51,6 +51,8 @@ import com.android.launcher3.widget.LauncherAppWidgetProviderInfo;
 import com.android.launcher3.widget.PendingAppWidgetHostView;
 import com.android.launcher3.widget.util.WidgetSizes;
 
+import app.lawnchair.ui.popup.WidgetPaddingSheet;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -89,6 +91,7 @@ public class AppWidgetResizeFrame extends AbstractFloatingView implements View.O
     private CellLayout mCellLayout;
     private DragLayer mDragLayer;
     private ImageButton mReconfigureButton;
+    private ImageButton mPaddingButton;
 
     private final int mBackgroundPadding;
     private final int mTouchTargetWidth;
@@ -352,6 +355,18 @@ public class AppWidgetResizeFrame extends AbstractFloatingView implements View.O
                     }
                 });
             }
+        }
+
+        mPaddingButton = (ImageButton) findViewById(R.id.widget_padding_button);
+        // Per-widget padding is keyed on the system-allocated widget id, so only offer it for real
+        // (non-custom) widgets.
+        if (mWidgetView.getAppWidgetId() > 0) {
+            mPaddingButton.setVisibility(VISIBLE);
+            mPaddingButton.setOnClickListener(view -> {
+                int appWidgetId = mWidgetView.getAppWidgetId();
+                close(false);
+                WidgetPaddingSheet.show(getContext(), appWidgetId);
+            });
         }
 
         if (FeatureFlags.ENABLE_WIDGET_TRANSITION_FOR_RESIZING.get()) {
@@ -757,6 +772,16 @@ public class AppWidgetResizeFrame extends AbstractFloatingView implements View.O
         return sTmpRect.contains(xFrame, yFrame);
     }
 
+    private boolean isTouchOnPaddingButton(MotionEvent ev) {
+        if (mPaddingButton == null || mPaddingButton.getVisibility() != VISIBLE) {
+            return false;
+        }
+        int xFrame = (int) ev.getX() - getLeft();
+        int yFrame = (int) ev.getY() - getTop();
+        mPaddingButton.getHitRect(sTmpRect);
+        return sTmpRect.contains(xFrame, yFrame);
+    }
+
     @Override
     public boolean onControllerTouchEvent(MotionEvent ev) {
         int action = ev.getAction();
@@ -784,9 +809,9 @@ public class AppWidgetResizeFrame extends AbstractFloatingView implements View.O
         if (ev.getAction() == MotionEvent.ACTION_DOWN && handleTouchDown(ev)) {
             return true;
         }
-        // Keep the resize frame open but let a click on the reconfigure button fall through to the
-        // button's OnClickListener.
-        if (isTouchOnReconfigureButton(ev)) {
+        // Keep the resize frame open but let a click on the reconfigure or padding button fall
+        // through to the button's OnClickListener.
+        if (isTouchOnReconfigureButton(ev) || isTouchOnPaddingButton(ev)) {
             return false;
         }
         close(false);

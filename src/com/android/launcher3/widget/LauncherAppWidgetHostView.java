@@ -42,12 +42,16 @@ import androidx.annotation.Nullable;
 
 import com.android.launcher3.CheckLongPressHelper;
 import com.android.launcher3.Flags;
+import com.android.launcher3.Launcher;
+import com.android.launcher3.LauncherState;
 import com.android.launcher3.R;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.util.Themes;
 import com.android.launcher3.views.ActivityContext;
 import com.android.launcher3.views.BaseDragLayer;
 import com.android.launcher3.views.BaseDragLayer.TouchCompleteListener;
+
+import app.lawnchair.data.widget.WidgetPaddingRepository;
 
 /**
  * {@inheritDoc}
@@ -126,6 +130,9 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
     @Override
     public void setAppWidget(int appWidgetId, AppWidgetProviderInfo info) {
         super.setAppWidget(appWidgetId, info);
+        // Apply any per-widget size override stored for this widget instance. Re-applied on every
+        // bind so recycled host views don't inherit a previous widget's scale.
+        WidgetPaddingRepository.applyStoredScale(this, appWidgetId);
         if (!mTrackingWidgetUpdate && appWidgetId != -1) {
             mTrackingWidgetUpdate = true;
             Log.i(TAG, "App widget created with id: " + appWidgetId);
@@ -292,6 +299,16 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
         mIsScrollable = isTaggedAsScrollable() || checkScrollableRecursively(this);
+        // CellLayout resets child scale to 1 whenever a view is (re)added (move/resize/rebind), so
+        // re-assert the per-widget size after every layout. Only enlarge on the home screen; while
+        // editing/dragging the widget stays at its natural size so the resize frame and reorder
+        // previews stay aligned with the grid.
+        if (mActivityContext instanceof Launcher launcher
+                && launcher.isInState(LauncherState.NORMAL)) {
+            WidgetPaddingRepository.applyStoredScale(this, getAppWidgetId());
+        } else {
+            WidgetPaddingRepository.applyScalePercent(this, WidgetPaddingRepository.DEFAULT_SCALE);
+        }
     }
 
     /**

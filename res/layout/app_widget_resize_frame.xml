@@ -86,5 +86,18 @@
             android:visibility="gone"
             android:contentDescription="@string/widget_reconfigure_button_content_description" />
 
+        <ImageButton
+            android:id="@+id/widget_padding_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="@dimen/widget_reconfigure_button_padding"
+            android:layout_gravity="bottom|start"
+            android:layout_marginBottom="@dimen/widget_reconfigure_button_margin"
+            android:layout_marginStart="@dimen/widget_reconfigure_button_margin"
+            android:src="@drawable/widget_padding_button_frame"
+            android:background="?android:attr/selectableItemBackground"
+            android:visibility="gone"
+            android:contentDescription="@string/widget_padding_label" />
+
     </FrameLayout>
 </com.android.launcher3.AppWidgetResizeFrame>

@@ -14,21 +14,25 @@ import app.lawnchair.data.iconoverride.IconOverride
 import app.lawnchair.data.iconoverride.IconOverrideDao
 import app.lawnchair.data.wallpaper.Wallpaper
 import app.lawnchair.data.wallpaper.service.WallpaperDao
+import app.lawnchair.data.widget.WidgetPadding
+import app.lawnchair.data.widget.WidgetPaddingDao
 import app.lawnchair.util.MainThreadInitializedObject
 import kotlinx.coroutines.runBlocking
 
-@Database(entities = [IconOverride::class, Wallpaper::class, FolderInfoEntity::class, FolderItemEntity::class], version = 3)
+@Database(entities = [IconOverride::class, Wallpaper::class, FolderInfoEntity::class, FolderItemEntity::class, WidgetPadding::class], version = 5)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun iconOverrideDao(): IconOverrideDao
     abstract fun wallpaperDao(): WallpaperDao
     abstract fun folderDao(): FolderDao
+    abstract fun widgetPaddingDao(): WidgetPaddingDao
 
     suspend fun checkpoint() {
         iconOverrideDao().checkpoint(SimpleSQLiteQuery("pragma wal_checkpoint(full)"))
         wallpaperDao().checkpoint(SimpleSQLiteQuery("pragma wal_checkpoint(full)"))
         folderDao().checkpoint(SimpleSQLiteQuery("pragma wal_checkpoint(full)"))
+        widgetPaddingDao().checkpoint(SimpleSQLiteQuery("pragma wal_checkpoint(full)"))
     }
 
     fun checkpointSync() {
@@ -89,12 +93,44 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+            CREATE TABLE IF NOT EXISTS `widgetpadding` (
+                `appWidgetId` INTEGER NOT NULL,
+                `paddingDp` INTEGER NOT NULL,
+                PRIMARY KEY(`appWidgetId`)
+            )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // The per-widget override switched from a padding value to a scale percentage; the
+                // old values are not meaningful as scales, so recreate the table fresh.
+                database.execSQL("DROP TABLE IF EXISTS `widgetpadding`")
+                database.execSQL(
+                    """
+            CREATE TABLE IF NOT EXISTS `widgetpadding` (
+                `appWidgetId` INTEGER NOT NULL,
+                `scalePercent` INTEGER NOT NULL,
+                PRIMARY KEY(`appWidgetId`)
+            )
+                    """.trimIndent(),
+                )
+            }
+        }
+
         val INSTANCE = MainThreadInitializedObject { context ->
             Room.databaseBuilder(
                 context,
                 AppDatabase::class.java,
                 "preferences",
-            ).addMigrations(MIGRATION_1_3).addMigrations(MIGRATION_2_3).build()
+            ).addMigrations(MIGRATION_1_3).addMigrations(MIGRATION_2_3)
+                .addMigrations(MIGRATION_3_4).addMigrations(MIGRATION_4_5).build()
         }
     }
 }

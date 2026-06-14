@@ -173,6 +173,13 @@ private fun PreferenceGroupScope.LocalSearchSettings(
         stringResource(prefs2.webSuggestionProvider.getAdapter().state.value.label)
 
     Item {
+        SwitchPreference(
+            adapter = prefs2.showSuggestedAppsInSearch.getAdapter(),
+            label = stringResource(R.string.search_pref_suggested_apps_title),
+            description = stringResource(R.string.search_pref_suggested_apps_description),
+        )
+    }
+    Item {
         SearchProviderPreferenceItem(
             adapter = prefs.searchResultStartPageSuggestion.getAdapter(),
             label = stringResource(id = R.string.search_pref_result_web_title),

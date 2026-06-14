@@ -39,6 +39,7 @@ import app.lawnchair.qsb.providers.PixelSearch
 import app.lawnchair.qsb.setThemedIconResource
 import app.lawnchair.search.LawnchairRecentSuggestionProvider
 import app.lawnchair.search.algorithms.LawnchairSearchAlgorithm
+import app.lawnchair.search.algorithms.engine.SuggestionTab
 import app.lawnchair.theme.drawable.DrawableTokens
 import app.lawnchair.util.viewAttachedScope
 import com.android.launcher3.Insettable
@@ -206,6 +207,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
 
                 // Sometimes the user has to click the input bar one more time
                 // for the keyboard to show.
+                input.showKeyboard()
             } else {
                 setBackgroundVisibility(true, 1f)
                 animateHintVisibility(false)
@@ -218,6 +220,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                 focusedResultTitle = ""
                 input.setHint("")
                 hint.text = ""
+                searchAlgorithm?.invalidateSuggestionCache()
             }
 
             if (::appsView.isInitialized) {
@@ -350,7 +353,12 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     }
 
     override fun onAppsUpdated() {
+        searchAlgorithm?.invalidateSuggestionCache()
         searchBarController.refreshSearchResult()
+    }
+
+    fun selectSuggestionTab(tab: SuggestionTab) {
+        searchAlgorithm?.selectSuggestionTab(tab, this)
     }
 
     override fun initializeSearch(appsView: ActivityAllAppsContainerView<*>) {

@@ -127,6 +127,8 @@ constructor(
                     val pendingInfo = PendingAddWidgetInfo(appWidgetInfo, item.sourceContainer)
                     pendingInfo.spanX = item.spanX
                     pendingInfo.spanY = item.spanY
+                    pendingInfo.subSpanX = item.subSpanX
+                    pendingInfo.subSpanY = item.subSpanY
                     pendingInfo.minSpanX = item.minSpanX
                     pendingInfo.minSpanY = item.minSpanY
                     var options = pendingInfo.getDefaultSizeOptions(context)

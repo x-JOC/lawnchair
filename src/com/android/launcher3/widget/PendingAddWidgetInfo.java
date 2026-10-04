@@ -77,7 +77,8 @@ public class PendingAddWidgetInfo extends PendingAddItemInfo {
     }
 
     public Bundle getDefaultSizeOptions(Context context) {
-        return WidgetSizes.getWidgetSizeOptions(context, componentName, spanX, spanY);
+        return WidgetSizes.getWidgetSizeOptions(context, componentName, spanX + subSpanX * 0.5f,
+                spanY + subSpanY * 0.5f);
     }
 
     @NonNull

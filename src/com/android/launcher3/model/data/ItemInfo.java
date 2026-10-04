@@ -161,7 +161,8 @@ public class ItemInfo {
 
     /**
      * Lawnchair: Subgrid (half-cell) sizing. Extra half cell of horizontal span,
-     * 0 = whole cells, 1 = half-cell larger. Only honored when subgrid positioning is enabled.
+     * 0 = whole cells, 1 = half-cell larger, -1 = half a cell with a base span of 1.
+     * Only honored when subgrid positioning is enabled.
      */
     public int subSpanX = 0;
 
@@ -303,14 +304,23 @@ public class ItemInfo {
         screenId = values.getAsInteger(LauncherSettings.Favorites.SCREEN);
         cellX = values.getAsInteger(LauncherSettings.Favorites.CELLX);
         cellY = values.getAsInteger(LauncherSettings.Favorites.CELLY);
-        spanX = values.getAsInteger(LauncherSettings.Favorites.SPANX);
-        spanY = values.getAsInteger(LauncherSettings.Favorites.SPANY);
+        spanX = decodeSubgridSpanBase(values.getAsFloat(LauncherSettings.Favorites.SPANX));
+        spanY = decodeSubgridSpanBase(values.getAsFloat(LauncherSettings.Favorites.SPANY));
         rank = values.getAsInteger(LauncherSettings.Favorites.RANK);
         // Lawnchair: Subgrid positioning — recover the half-step from the (possibly REAL) value.
         subX = decodeSubgridStep(values.getAsFloat(LauncherSettings.Favorites.CELLX));
         subY = decodeSubgridStep(values.getAsFloat(LauncherSettings.Favorites.CELLY));
-        subSpanX = decodeSubgridStep(values.getAsFloat(LauncherSettings.Favorites.SPANX));
-        subSpanY = decodeSubgridStep(values.getAsFloat(LauncherSettings.Favorites.SPANY));
+        subSpanX = decodeSubgridSpanStep(values.getAsFloat(LauncherSettings.Favorites.SPANX));
+        subSpanY = decodeSubgridSpanStep(values.getAsFloat(LauncherSettings.Favorites.SPANY));
+    }
+
+    /** Keeps a positive base span for code that consumes whole-cell widget sizes. */
+    public static int decodeSubgridSpanBase(float value) {
+        return value == 0.5f ? 1 : (int) value;
+    }
+
+    public static int decodeSubgridSpanStep(float value) {
+        return value == 0.5f ? -1 : decodeSubgridStep(value);
     }
 
     /** Lawnchair: Subgrid positioning. Returns 1 if the value carries a half-cell offset, else 0. */

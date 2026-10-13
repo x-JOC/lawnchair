@@ -29,6 +29,7 @@ import app.lawnchair.search.algorithms.engine.provider.FileSearchProvider
 import app.lawnchair.search.algorithms.engine.provider.HistorySearchProvider
 import app.lawnchair.search.algorithms.engine.provider.SettingsSearchProvider
 import app.lawnchair.search.algorithms.engine.provider.ShortcutSearchProvider
+import app.lawnchair.search.algorithms.engine.provider.apps.AppLaunchStore
 import app.lawnchair.search.algorithms.engine.provider.apps.AppSearchProvider
 import app.lawnchair.search.algorithms.engine.provider.apps.AppSuggestions
 import app.lawnchair.search.algorithms.engine.provider.apps.SuggestedAppsProvider
@@ -65,17 +66,15 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
 
     /**
      * Zero-state suggestion session: the selected tab plus a cached snapshot so switching tabs is
-     * instant and doesn't re-query usage stats. Held as one atomic value because it is read and
-     * written across the main thread, the model executor and IO coroutines. The snapshot is cleared
-     * when the search box loses focus or the app list changes; the tab choice persists until usage
-     * access is granted, so Frequent becomes the default again once it has data.
-     * [usageGranted] is the usage access state of the last loaded snapshot and survives clearing it.
+     * instant and doesn't re-read the launch history. Held as one atomic value because it is read
+     * and written across the main thread, the model executor and IO coroutines. The snapshot is
+     * cleared when the search box loses focus or the app list changes, and is reloaded when an app
+     * launch was recorded since it was taken. A tab the user picked stays selected.
      */
     private data class SuggestionState(
         val selectedTab: SuggestionTab = SuggestionTab.FREQUENT,
         val userPickedTab: Boolean = false,
         val snapshot: AppSuggestions? = null,
-        val usageGranted: Boolean? = null,
     )
 
     private val suggestionState = AtomicReference(SuggestionState())
@@ -88,13 +87,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
      * newer one.
      */
     private val requestSeq = AtomicInteger(0)
-
-    /**
-     * Whether the suggestion tabs on screen were loaded without usage access, i.e. they show the
-     * prompt to turn it on. Tracked apart from the snapshot, which is cleared on blur and on app
-     * list changes while the tabs can stay on screen. Main thread only.
-     */
-    private var usagePromptShowing = false
 
     private val searchProviders: List<SearchProvider> = listOf(
         SettingsSearchProvider,
@@ -140,7 +132,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
                     val adapterItems = transformSearchResults(searchTargets)
                     withContext(Dispatchers.Main) {
                         if (token == requestSeq.get()) {
-                            usagePromptShowing = false
                             callback.onSearchResult(query, ArrayList(adapterItems))
                         }
                     }
@@ -159,7 +150,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         val suggestionsEnabled = PreferenceManager2.getInstance(context).showSuggestedAppsInSearch.firstCached()
 
         if (!suggestionsEnabled && !historyEnabled) {
-            usagePromptShowing = false
             callback.clearSearchResult()
             return
         }
@@ -173,6 +163,7 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
 
         val state = suggestionState.get()
         val cached = state.snapshot
+            ?.takeIf { it.launchRevision == AppLaunchStore.getInstance(context).revision }
         if (cached != null) {
             currentJob = coroutineScope.launch {
                 postZeroState(token, cached, state.selectedTab, callback)
@@ -180,32 +171,23 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
             return
         }
 
-        // Two full rows of the search grid, which uses the device profile's shown column count.
+        // Enough full rows of the search grid to fill a page of the drawer. The grid uses the
+        // device profile's shown column count, the same as the app drawer.
         val columns = context.launcherNullable?.deviceProfile?.numShownAllAppsColumns
             ?: InvariantDeviceProfile.INSTANCE.get(context).numAllAppsColumns
-        val limit = (columns * 2).coerceAtLeast(1)
+        val limit = (columns * SUGGESTION_MAX_ROWS).coerceAtLeast(1)
 
         modelRetryJob = appState.model.runWhenModelLoaded(coroutineScope) { apps ->
             if (token != requestSeq.get()) return@runWhenModelLoaded
             // AllAppsList may only be read on the model thread. Copy it here and do the slower
-            // usage-stats and package-manager queries on IO, so the model thread isn't held up.
+            // launch-history and package-manager reads on IO, so the model thread isn't held up.
             val appsCopy = apps.data.toList()
             currentJob?.cancel()
             currentJob = coroutineScope.launch {
-                val snapshot = SuggestedAppsProvider.loadSnapshot(context, appsCopy, limit)
+                val snapshot = SuggestedAppsProvider.loadSnapshot(context, appsCopy, launchLimit = limit)
                 if (token != requestSeq.get()) return@launch
                 val updated = suggestionState.updateAndGet { current ->
-                    // A tab picked before usage access was granted no longer overrides the default.
-                    val base = if (current.usageGranted == false && snapshot.usageGranted) {
-                        current.copy(userPickedTab = false)
-                    } else {
-                        current
-                    }
-                    base.copy(
-                        snapshot = snapshot,
-                        usageGranted = snapshot.usageGranted,
-                        selectedTab = resolveTab(base, snapshot),
-                    )
+                    current.copy(snapshot = snapshot, selectedTab = resolveTab(current, snapshot))
                 }
                 postZeroState(token, snapshot, updated.selectedTab, callback)
             }
@@ -215,8 +197,7 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
     /** Default tab for a freshly-loaded snapshot, unless the user has explicitly picked one. */
     private fun resolveTab(state: SuggestionState, snapshot: AppSuggestions): SuggestionTab {
         if (state.userPickedTab) return state.selectedTab
-        val default = if (snapshot.usageGranted) SuggestionTab.FREQUENT else SuggestionTab.NEW
-        return snapshot.firstNonEmptyTab(default)
+        return snapshot.firstNonEmptyTab(SuggestionTab.FREQUENT)
     }
 
     override fun selectSuggestionTab(tab: SuggestionTab, callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
@@ -238,14 +219,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         suggestionState.updateAndGet { it.copy(snapshot = null) }
     }
 
-    override fun refreshSuggestionsIfStale(callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
-        // The tabs on screen were loaded without usage access; reload them if it has been granted
-        // since (e.g. the user just came back from the usage access settings page).
-        if (!usagePromptShowing || !SuggestedAppsProvider.hasUsageAccess(context)) return
-        invalidateSuggestionCache()
-        doZeroStateSearch(callback)
-    }
-
     private suspend fun postZeroState(
         token: Int,
         suggestions: AppSuggestions?,
@@ -258,10 +231,9 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
 
         val results = mutableListOf<SearchResult>()
 
-        val tabs = suggestions?.takeIf { it.shouldShowTabs }
-        if (tabs != null) {
-            val apps = tabs.appsFor(selectedTab)
-            results.add(SearchResult.Action.SuggestionTabs(selectedTab, tabs.usageGranted, apps.isEmpty()))
+        if (suggestions != null) {
+            val apps = suggestions.appsFor(selectedTab)
+            results.add(SearchResult.Action.SuggestionTabs(selectedTab, apps.isEmpty()))
             apps.forEach { results.add(SearchResult.SuggestedApp(it, selectedTab)) }
         }
 
@@ -271,6 +243,9 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         }
 
         when {
+            // The tab row ends with its own search settings button.
+            suggestions != null -> Unit
+
             results.isNotEmpty() -> {
                 results.add(SearchResult.Action.SearchSettings)
             }
@@ -291,7 +266,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
             // Nothing to show (history off and no suggestions).
             withContext(Dispatchers.Main) {
                 if (token == requestSeq.get()) {
-                    usagePromptShowing = false
                     callback.clearSearchResult()
                 }
             }
@@ -302,7 +276,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         val adapterItems = transformSearchResults(searchTargets)
         withContext(Dispatchers.Main) {
             if (token == requestSeq.get()) {
-                usagePromptShowing = tabs != null && !tabs.usageGranted
                 callback.onSearchResult("", ArrayList(adapterItems))
             }
         }
@@ -310,7 +283,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
 
     override fun cancel(interruptActiveRequests: Boolean) {
         requestSeq.incrementAndGet()
-        usagePromptShowing = false
         modelRetryJob?.cancel()
         currentJob?.cancel()
     }
@@ -373,5 +345,10 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         return sectionBuilders.flatMap { builder ->
             builder.build(context, factory, results)
         }
+    }
+
+    private companion object {
+        /** Rows of icons the Frequent and Recent tabs show at most, about a page of the drawer. */
+        const val SUGGESTION_MAX_ROWS = 8
     }
 }

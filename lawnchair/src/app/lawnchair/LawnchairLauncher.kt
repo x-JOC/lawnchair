@@ -45,6 +45,7 @@ import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.root.RootHelperManager
 import app.lawnchair.root.RootNotAvailableException
+import app.lawnchair.search.algorithms.engine.provider.apps.AppLaunchStore
 import app.lawnchair.theme.ThemeProvider
 import app.lawnchair.ui.popup.LauncherOptionsPopup
 import app.lawnchair.ui.popup.LawnchairShortcut
@@ -63,6 +64,8 @@ import com.android.launcher3.LauncherState
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.folder.FolderIcon
+import com.android.launcher3.logging.InstanceId
+import com.android.launcher3.logging.StatsLogManager
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.model.data.PredictedContainerInfo
 import com.android.launcher3.popup.SystemShortcut
@@ -424,6 +427,12 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         Utilities.allowBGLaunch(options)
         return ActivityOptionsWrapper(options, callbacks)
+    }
+
+    override fun logAppLaunch(statsLogManager: StatsLogManager?, info: ItemInfo?, instanceId: InstanceId?) {
+        super.logAppLaunch(statsLogManager, info, instanceId)
+        // Every successful launch from the launcher ends up here; the store ignores non-app items.
+        AppLaunchStore.getInstance(this).recordLaunch(info)
     }
 
     override fun getActivityLaunchOptions(v: View?, item: ItemInfo?): ActivityOptionsWrapper {

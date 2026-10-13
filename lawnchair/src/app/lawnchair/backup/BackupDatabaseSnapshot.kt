@@ -59,7 +59,10 @@ internal object BackupDatabaseSnapshot {
 
     internal fun <T> readSnapshot(source: File, read: (SQLiteDatabase) -> T): T {
         val readOnly = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
-        val flags = if (readOnly) SQLiteDatabase.OPEN_READONLY else SQLiteDatabase.OPEN_READWRITE
+        // Without NO_LOCALIZED_COLLATORS a read-write connection creates android_metadata and runs
+        // REINDEX LOCALIZED on open, i.e. it writes to the live launcher DB it should only read.
+        val flags = (if (readOnly) SQLiteDatabase.OPEN_READONLY else SQLiteDatabase.OPEN_READWRITE) or
+            SQLiteDatabase.NO_LOCALIZED_COLLATORS
         return SQLiteDatabase.openDatabase(source.path, null, flags).use { input ->
             if (readOnly) {
                 input.beginTransactionReadOnly()

@@ -226,8 +226,8 @@ android {
         }
 
         debug {
-            applicationIdSuffix ".debug"
-            resValue("string", "derived_app_name", "Lawnchair (Debug)")
+            applicationIdSuffix ".debugnew"
+            resValue("string", "derived_app_name", "Lawnchair (جديد)")
 
             manifestPlaceholders.quickstepMinSdk = "0"
             manifestPlaceholders.quickstepMaxSdk = "100000"

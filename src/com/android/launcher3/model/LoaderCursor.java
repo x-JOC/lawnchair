@@ -103,6 +103,8 @@ public class LoaderCursor extends CursorWrapper {
     private final IntArray mItemsToRemove = new IntArray();
     private final IntArray mRestoredRows = new IntArray();
     private final IntSparseArrayMap<GridOccupancy> mOccupied = new IntSparseArrayMap<>();
+    // Lawnchair: Subgrid positioning — base cells of the half-stepped items loaded so far.
+    private final IntSparseArrayMap<GridOccupancy> mSubgridOccupied = new IntSparseArrayMap<>();
 
     // CollectionInfo objects, which have not yet been loaded from the DB, but are expected to
     // found eventually as the loading progresses
@@ -285,14 +287,14 @@ public class LoaderCursor extends CursorWrapper {
      * Returns the x position for the item in the cell layout's grid
      */
     public int getSpanX() {
-        return getInt(mSpanXIndex);
+        return ItemInfo.decodeSubgridSpanBase(getFloat(mSpanXIndex));
     }
 
     /**
      * Returns the y position for the item in the cell layout's grid
      */
     public int getSpanY() {
-        return getInt(mSpanYIndex);
+        return ItemInfo.decodeSubgridSpanBase(getFloat(mSpanYIndex));
     }
 
     /**
@@ -537,6 +539,12 @@ public class LoaderCursor extends CursorWrapper {
         info.screenId = getInt(mScreenIndex);
         info.cellX = getInt(mCellXIndex);
         info.cellY = getInt(mCellYIndex);
+        // Lawnchair: Subgrid positioning — recover half-cell offsets/sizes from the (possibly REAL)
+        // columns. Base reads above stay integer (getInt truncates), so legacy behavior is unchanged.
+        info.subX = ItemInfo.decodeSubgridStep(getFloat(mCellXIndex));
+        info.subY = ItemInfo.decodeSubgridStep(getFloat(mCellYIndex));
+        info.subSpanX = ItemInfo.decodeSubgridSpanStep(getFloat(mSpanXIndex));
+        info.subSpanY = ItemInfo.decodeSubgridSpanStep(getFloat(mSpanYIndex));
     }
 
     /**
@@ -637,8 +645,26 @@ public class LoaderCursor extends CursorWrapper {
 
         final int countX = mIDP.numColumns;
         final int countY = mIDP.numRows;
-        if (item.container == Favorites.CONTAINER_DESKTOP && item.cellX < 0 || item.cellY < 0
-                || item.cellX + item.spanX > countX || item.cellY + item.spanY > countY) {
+        boolean subgrid = PreferenceCacheExtensionsKt.firstCached(preferenceManager2.getEnableSubgridPositioning());
+        // Lawnchair: Subgrid positioning — an item whose whole cells fit can still stick out half a
+        // cell past the page. Pull it back on to the page and persist that, instead of deleting it.
+        if (subgrid && item.cellX >= 0 && item.cellY >= 0
+                && item.cellX + item.spanX <= countX && item.cellY + item.spanY <= countY
+                && clampSubgridToGrid(item, countX, countY)) {
+            FileLog.w(TAG, "Clamped half-cell overflow of " + item + " to the "
+                    + countX + "x" + countY + " grid");
+            updater()
+                    .putSubgrid(Favorites.CELLX, item.cellX, item.subX)
+                    .putSubgrid(Favorites.CELLY, item.cellY, item.subY)
+                    .putSubgrid(Favorites.SPANX, item.spanX, item.subSpanX)
+                    .putSubgrid(Favorites.SPANY, item.spanY, item.subSpanY)
+                    .commit();
+        }
+        float x = item.cellX + (subgrid ? item.subX * 0.5f : 0);
+        float y = item.cellY + (subgrid ? item.subY * 0.5f : 0);
+        float width = item.spanX + (subgrid ? item.subSpanX * 0.5f : 0);
+        float height = item.spanY + (subgrid ? item.subSpanY * 0.5f : 0);
+        if (x < 0 || y < 0 || x + width > countX || y + height > countY) {
             Log.e(TAG, "Error loading shortcut " + item
                     + " into cell (" + containerIndex + "-" + item.screenId + ":"
                     + item.cellX + "," + item.cellY
@@ -657,8 +683,10 @@ public class LoaderCursor extends CursorWrapper {
                 screen.markCells(0, 0, spanX, spanY, true);
             }
             mOccupied.put(item.screenId, screen);
+            mSubgridOccupied.put(item.screenId, new GridOccupancy(countX + 1, countY + 1));
         }
         final GridOccupancy occupancy = mOccupied.get(item.screenId);
+        boolean subgridOverlap = trackSubgridOverlap(item, mSubgridOccupied.get(item.screenId));
 
         // Check if any workspace icons overlap with each other
         if (occupancy.isRegionVacant(item.cellX, item.cellY, item.spanX, item.spanY)) {
@@ -669,8 +697,64 @@ public class LoaderCursor extends CursorWrapper {
                     + " into cell (" + containerIndex + "-" + item.screenId + ":"
                     + item.cellX + "," + item.cellX + "," + item.spanX + "," + item.spanY
                     + ") already occupied");
-            return PreferenceCacheExtensionsKt.firstCached(preferenceManager2.getAllowWidgetOverlap());
+            // Lawnchair: Subgrid free placement lets any workspace item, folders included, share a
+            // base cell with a half-stepped neighbour, so don't drop it. Which of the two loads
+            // second depends on row order, so a stricter check for folders would delete them.
+            // Keep such overlaps when subgrid is off too, or turning it off would delete them.
+            return PreferenceCacheExtensionsKt.firstCached(preferenceManager2.getAllowWidgetOverlap())
+                    || subgrid || subgridOverlap;
         }
+    }
+
+    /**
+     * Lawnchair: Subgrid positioning. Records the base cells of {@code item} in {@code halfStepped}
+     * if it has a half-cell offset or size, whatever the current setting is.
+     *
+     * @return whether {@code item} may share base cells with an item loaded before it: it has a
+     * half step itself, or one of its base cells holds a half-stepped item
+     */
+    @VisibleForTesting
+    static boolean trackSubgridOverlap(ItemInfo item, GridOccupancy halfStepped) {
+        if (item.subX != 0 || item.subY != 0 || item.subSpanX != 0 || item.subSpanY != 0) {
+            halfStepped.markCells(item, true);
+            return true;
+        }
+        return !halfStepped.isRegionVacant(item.cellX, item.cellY, item.spanX, item.spanY);
+    }
+
+    /**
+     * Lawnchair: Subgrid positioning. Keeps an item's half-cell extent on the {@code countX} x
+     * {@code countY} page by moving its leading edge back and, if it is larger than the page,
+     * shrinking it to the page size. Works in half cells; the base cell must already be on the page.
+     *
+     * @return whether the item was changed
+     */
+    @VisibleForTesting
+    static boolean clampSubgridToGrid(ItemInfo item, int countX, int countY) {
+        int posX = item.cellX * 2 + item.subX;
+        int posY = item.cellY * 2 + item.subY;
+        int sizeX = item.spanX * 2 + item.subSpanX;
+        int sizeY = item.spanY * 2 + item.subSpanY;
+        int newSizeX = Math.min(sizeX, countX * 2);
+        int newSizeY = Math.min(sizeY, countY * 2);
+        int newPosX = Math.max(0, Math.min(posX, countX * 2 - newSizeX));
+        int newPosY = Math.max(0, Math.min(posY, countY * 2 - newSizeY));
+        if (newPosX == posX && newPosY == posY && newSizeX == sizeX && newSizeY == sizeY) {
+            return false;
+        }
+        item.cellX = newPosX / 2;
+        item.subX = newPosX % 2;
+        item.cellY = newPosY / 2;
+        item.subY = newPosY % 2;
+        if (newSizeX != sizeX) {
+            item.spanX = countX;
+            item.subSpanX = 0;
+        }
+        if (newSizeY != sizeY) {
+            item.spanY = countY;
+            item.subSpanY = 0;
+        }
+        return true;
     }
 
     @AssistedFactory

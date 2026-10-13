@@ -219,6 +219,8 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
      */
     @Thunk
     int[] mTargetCell = new int[2];
+    // Lawnchair: Subgrid positioning — half-cell offset (0/1 per axis) chosen for the current drop.
+    private final int[] mTargetSub = new int[2];
     private int mDragOverX = -1;
     private int mDragOverY = -1;
 
@@ -2338,6 +2340,25 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
                         snappedToNewPage = true;
                     }
                     final ItemInfo info = (ItemInfo) cell.getTag();
+
+                    // Lawnchair: Subgrid positioning — refine the integer target to the nearest
+                    // half-cell (no-op unless enabled for this workspace layout). May adjust
+                    // mTargetCell, so compute before it is consumed below. When the feature is off
+                    // we clear ALL half-steps so a drag fully reverts the item to integer cells
+                    // (keeps cellX/spanX consistent — no stale half-size left behind).
+                    if (dropTargetLayout.isSubgridEnabled()) {
+                        dropTargetLayout.computeSubgridTarget(mTargetCell, mTargetSub, item.spanX,
+                                item.spanY, info.subSpanX, info.subSpanY,
+                                mDragViewVisualCenter[0], mDragViewVisualCenter[1]);
+                        info.subX = mTargetSub[0];
+                        info.subY = mTargetSub[1];
+                    } else {
+                        info.subX = 0;
+                        info.subY = 0;
+                        info.subSpanX = 0;
+                        info.subSpanY = 0;
+                    }
+
                     if (hasMovedLayouts) {
                         // Reparent the view
                         CellLayout parentCell = getParentCellLayoutForView(cell);
@@ -2361,6 +2382,11 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
                     lp.cellHSpan = item.spanX;
                     lp.cellVSpan = item.spanY;
                     lp.isLockedToGrid = true;
+                    // Lawnchair: Subgrid positioning — carry the half-cell offset/size onto the view.
+                    lp.setSubX(info.subX);
+                    lp.setSubY(info.subY);
+                    lp.setSubSpanX(info.subSpanX);
+                    lp.setSubSpanY(info.subSpanY);
 
                     if (container != CONTAINER_HOTSEAT
                             && cell instanceof LauncherAppWidgetHostView) {
@@ -2762,8 +2788,15 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             mDragTargetLayout.performReorder((int) mDragViewVisualCenter[0],
                     (int) mDragViewVisualCenter[1], minSpanX, minSpanY, item.spanX, item.spanY,
                     child, mTargetCell, span, CellLayout.MODE_SHOW_REORDER_HINT);
-            mDragTargetLayout.visualizeDropLocation(mTargetCell[0], mTargetCell[1], span[0],
-                    span[1], d);
+            // Lawnchair: Subgrid positioning — preview the half-cell position/size before dropping.
+            int[] previewCell = {mTargetCell[0], mTargetCell[1]};
+            boolean subgridDrop = isSubgridDrop(d);
+            int previewSubSpanX = subgridDrop ? item.subSpanX : 0;
+            int previewSubSpanY = subgridDrop ? item.subSpanY : 0;
+            computeSubgridPreview(subgridDrop, previewCell, span[0], span[1],
+                    previewSubSpanX, previewSubSpanY);
+            mDragTargetLayout.visualizeDropLocation(previewCell[0], previewCell[1], span[0],
+                    span[1], mTargetSub[0], mTargetSub[1], previewSubSpanX, previewSubSpanY, d);
             nearestDropOccupied = mDragTargetLayout.isNearestDropLocationOccupied((int)
                             mDragViewVisualCenter[0], (int) mDragViewVisualCenter[1], item.spanX,
                     item.spanY, child, mTargetCell);
@@ -2988,6 +3021,31 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
         }
     }
 
+    /**
+     * Lawnchair: Subgrid positioning. Whether a drop of {@code d} on {@link #mDragTargetLayout} lands
+     * on a half cell. Only the internal move in {@link #onDrop} applies the half-cell target;
+     * {@link #onDropExternal} (All Apps, the widget tray, folders) places items on whole cells, so
+     * those drags get a whole-cell preview that matches where the item lands.
+     */
+    private boolean isSubgridDrop(DragObject d) {
+        return d.dragSource == this && mDragInfo != null && mDragTargetLayout.isSubgridEnabled();
+    }
+
+    /**
+     * Lawnchair: Subgrid positioning. Refines {@code previewCell} to the half-cell drop target into
+     * {@link #mTargetSub}, or clears the half-step when {@code subgridDrop} is false.
+     */
+    private void computeSubgridPreview(boolean subgridDrop, int[] previewCell, int spanX,
+            int spanY, int subSpanX, int subSpanY) {
+        if (subgridDrop) {
+            mDragTargetLayout.computeSubgridTarget(previewCell, mTargetSub, spanX, spanY,
+                    subSpanX, subSpanY, mDragViewVisualCenter[0], mDragViewVisualCenter[1]);
+        } else {
+            mTargetSub[0] = 0;
+            mTargetSub[1] = 0;
+        }
+    }
+
     class ReorderAlarmListener implements OnAlarmListener {
         final float[] dragViewCenter;
         final int minSpanX, minSpanY, spanX, spanY;
@@ -3021,8 +3079,16 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
                 setDragMode(DRAG_MODE_REORDER);
             }
 
-            mDragTargetLayout.visualizeDropLocation(mTargetCell[0], mTargetCell[1],
-                    resultSpan[0], resultSpan[1], dragObject);
+            // Lawnchair: Subgrid positioning — preview the half-cell position before dropping.
+            int[] previewCell = {mTargetCell[0], mTargetCell[1]};
+            boolean subgridDrop = isSubgridDrop(dragObject) && dragObject.dragInfo != null;
+            int previewSubSpanX = subgridDrop ? dragObject.dragInfo.subSpanX : 0;
+            int previewSubSpanY = subgridDrop ? dragObject.dragInfo.subSpanY : 0;
+            computeSubgridPreview(subgridDrop, previewCell, resultSpan[0], resultSpan[1],
+                    previewSubSpanX, previewSubSpanY);
+            mDragTargetLayout.visualizeDropLocation(previewCell[0], previewCell[1],
+                    resultSpan[0], resultSpan[1], mTargetSub[0], mTargetSub[1],
+                    previewSubSpanX, previewSubSpanY, dragObject);
         }
     }
 

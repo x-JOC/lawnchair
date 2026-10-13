@@ -144,8 +144,8 @@ constructor(
         override fun updateSizeRangesAsync(
             widgetId: Int,
             info: AppWidgetProviderInfo,
-            spanX: Int,
-            spanY: Int,
+            spanX: Float,
+            spanY: Float,
         ) {
             // Ignore
         }

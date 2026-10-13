@@ -209,17 +209,31 @@ class GridSizeMigrationTest {
                 Point(c.getInt(cellXIndex), c.getInt(cellYIndex))
         }
         c.close()
-        // Expected dest grid icons
-        // _ _ _ _
-        // 5 6 7 8
-        // 9 _ _ _
-        // _ _ _ _
         assertThat(locMap.size.toLong()).isEqualTo(5)
-        assertThat(locMap[testPackage5]).isEqualTo(Point(0, 1))
-        assertThat(locMap[testPackage6]).isEqualTo(Point(1, 1))
-        assertThat(locMap[testPackage7]).isEqualTo(Point(2, 1))
-        assertThat(locMap[testPackage8]).isEqualTo(Point(3, 1))
-        assertThat(locMap[testPackage9]).isEqualTo(Point(0, 2))
+        if (Flags.gridMigrationRefactor()) {
+            // Lawnchair: 6 and 8 still fit, so they keep their cell. Only the items in the
+            // removed column (5, 7, 9) are moved, into the first free cells.
+            // _ _ _ _
+            // 5 7 9 _
+            // _ _ 6 _
+            // _ _ 8 _
+            assertThat(locMap[testPackage5]).isEqualTo(Point(0, 1))
+            assertThat(locMap[testPackage7]).isEqualTo(Point(1, 1))
+            assertThat(locMap[testPackage9]).isEqualTo(Point(2, 1))
+            assertThat(locMap[testPackage6]).isEqualTo(Point(2, 2))
+            assertThat(locMap[testPackage8]).isEqualTo(Point(2, 3))
+        } else {
+            // Expected dest grid icons
+            // _ _ _ _
+            // 5 6 7 8
+            // 9 _ _ _
+            // _ _ _ _
+            assertThat(locMap[testPackage5]).isEqualTo(Point(0, 1))
+            assertThat(locMap[testPackage6]).isEqualTo(Point(1, 1))
+            assertThat(locMap[testPackage7]).isEqualTo(Point(2, 1))
+            assertThat(locMap[testPackage8]).isEqualTo(Point(3, 1))
+            assertThat(locMap[testPackage9]).isEqualTo(Point(0, 2))
+        }
     }
 
     @Test
@@ -313,16 +327,28 @@ class GridSizeMigrationTest {
                 null,
             ) ?: throw IllegalStateException()
         var locMap = parseLocMap(c)
-        // Expected items in grid B
-        // _ _ _ _
-        // 5 6 7 8
-        // _ _ _ _
-        // _ _ _ _
         assertThat(locMap.size.toLong()).isEqualTo(4)
-        assertThat(locMap[testPackage5]).isEqualTo(Triple(0, 0, 1))
-        assertThat(locMap[testPackage6]).isEqualTo(Triple(0, 1, 1))
-        assertThat(locMap[testPackage7]).isEqualTo(Triple(0, 2, 1))
-        assertThat(locMap[testPackage8]).isEqualTo(Triple(0, 3, 1))
+        if (Flags.gridMigrationRefactor()) {
+            // Lawnchair: 6 and 8 keep their cell, 5 and 7 (removed column) are moved.
+            // _ _ _ _
+            // 5 7 _ _
+            // _ _ 6 _
+            // _ _ 8 _
+            assertThat(locMap[testPackage5]).isEqualTo(Triple(0, 0, 1))
+            assertThat(locMap[testPackage7]).isEqualTo(Triple(0, 1, 1))
+            assertThat(locMap[testPackage6]).isEqualTo(Triple(0, 2, 2))
+            assertThat(locMap[testPackage8]).isEqualTo(Triple(0, 2, 3))
+        } else {
+            // Expected items in grid B
+            // _ _ _ _
+            // 5 6 7 8
+            // _ _ _ _
+            // _ _ _ _
+            assertThat(locMap[testPackage5]).isEqualTo(Triple(0, 0, 1))
+            assertThat(locMap[testPackage6]).isEqualTo(Triple(0, 1, 1))
+            assertThat(locMap[testPackage7]).isEqualTo(Triple(0, 2, 1))
+            assertThat(locMap[testPackage8]).isEqualTo(Triple(0, 3, 1))
+        }
 
         // add item in B
         addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 0, 2, testPackage9)
@@ -362,7 +388,8 @@ class GridSizeMigrationTest {
                 null,
             ) ?: throw IllegalStateException()
         locMap = parseLocMap(c)
-        // Expected workspace items in grid A
+        // Expected workspace items in grid A (flag off; with the refactor flag on, 9 stays at
+        // (0, 2) instead)
         // _ _ _ _ _
         // 9 _ _ _ 5
         // _ _ 6 _ 7
@@ -374,8 +401,13 @@ class GridSizeMigrationTest {
         assertThat(locMap[testPackage6]).isEqualTo(Triple(0, 2, 2))
         assertThat(locMap[testPackage7]).isEqualTo(Triple(0, 4, 2))
         assertThat(locMap[testPackage8]).isEqualTo(Triple(0, 2, 3))
-        // Verify items that didn't exist in grid A are added in new screen
-        assertThat(locMap[testPackage9]).isEqualTo(Triple(0, 0, 1))
+        if (Flags.gridMigrationRefactor()) {
+            // Lawnchair: (0, 2) is free in grid A, so 9 keeps the cell it had in grid B.
+            assertThat(locMap[testPackage9]).isEqualTo(Triple(0, 0, 2))
+        } else {
+            // Verify items that didn't exist in grid A are added in new screen
+            assertThat(locMap[testPackage9]).isEqualTo(Triple(0, 0, 1))
+        }
 
         // remove item from B
         db.delete(TMP_TABLE, "$_ID=7", null)
@@ -422,16 +454,28 @@ class GridSizeMigrationTest {
                 null,
             ) ?: throw IllegalStateException()
         locMap = parseLocMap(c)
-        // Expected workspace items in grid B
-        // _ _ _ _
-        // 5 6 _ 8
-        // 9 _ _ _
-        // _ _ _ _
         assertThat(locMap.size.toLong()).isEqualTo(4)
-        assertThat(locMap[testPackage5]).isEqualTo(Triple(0, 0, 1))
-        assertThat(locMap[testPackage6]).isEqualTo(Triple(0, 1, 1))
-        assertThat(locMap[testPackage8]).isEqualTo(Triple(0, 3, 1))
-        assertThat(locMap[testPackage9]).isEqualTo(Triple(0, 0, 2))
+        if (Flags.gridMigrationRefactor()) {
+            // Lawnchair: only 7 is removed; everything else stays where it was in grid B.
+            // _ _ _ _
+            // 5 _ _ _
+            // 9 _ 6 _
+            // _ _ 8 _
+            assertThat(locMap[testPackage5]).isEqualTo(Triple(0, 0, 1))
+            assertThat(locMap[testPackage6]).isEqualTo(Triple(0, 2, 2))
+            assertThat(locMap[testPackage8]).isEqualTo(Triple(0, 2, 3))
+            assertThat(locMap[testPackage9]).isEqualTo(Triple(0, 0, 2))
+        } else {
+            // Expected workspace items in grid B
+            // _ _ _ _
+            // 5 6 _ 8
+            // 9 _ _ _
+            // _ _ _ _
+            assertThat(locMap[testPackage5]).isEqualTo(Triple(0, 0, 1))
+            assertThat(locMap[testPackage6]).isEqualTo(Triple(0, 1, 1))
+            assertThat(locMap[testPackage8]).isEqualTo(Triple(0, 3, 1))
+            assertThat(locMap[testPackage9]).isEqualTo(Triple(0, 0, 2))
+        }
     }
 
     @Test
@@ -918,6 +962,8 @@ class GridSizeMigrationTest {
     /**
      * Migrating from a smaller grid to a large one should reflow the pages if the column difference
      * is more than 2
+     *
+     * Lawnchair: with gridMigrationRefactor, items keep their screen instead.
      */
     @Throws(Exception::class)
     fun migrateFromSmallerGridBigDifference() {
@@ -968,13 +1014,22 @@ class GridSizeMigrationTest {
         }
         c.close()
 
-        // All icons fit the first screen
         assertThat(locMap.size).isEqualTo(5)
-        assertThat(locMap[testPackage1]).isEqualTo(0)
-        assertThat(locMap[testPackage2]).isEqualTo(0)
-        assertThat(locMap[testPackage3]).isEqualTo(0)
-        assertThat(locMap[testPackage4]).isEqualTo(0)
-        assertThat(locMap[testPackage5]).isEqualTo(0)
+        if (Flags.gridMigrationRefactor()) {
+            // Lawnchair: every item still fits, so each one stays on its own screen.
+            assertThat(locMap[testPackage1]).isEqualTo(0)
+            assertThat(locMap[testPackage2]).isEqualTo(0)
+            assertThat(locMap[testPackage3]).isEqualTo(1)
+            assertThat(locMap[testPackage4]).isEqualTo(1)
+            assertThat(locMap[testPackage5]).isEqualTo(2)
+        } else {
+            // All icons fit the first screen
+            assertThat(locMap[testPackage1]).isEqualTo(0)
+            assertThat(locMap[testPackage2]).isEqualTo(0)
+            assertThat(locMap[testPackage3]).isEqualTo(0)
+            assertThat(locMap[testPackage4]).isEqualTo(0)
+            assertThat(locMap[testPackage5]).isEqualTo(0)
+        }
     }
 
     @Test
@@ -991,7 +1046,11 @@ class GridSizeMigrationTest {
         migrateFromLargerGrid()
     }
 
-    /** Migrating from a larger grid to a smaller, we reflow from page 0 */
+    /**
+     * Migrating from a larger grid to a smaller, we reflow from page 0
+     *
+     * Lawnchair: with gridMigrationRefactor, items keep their screen instead.
+     */
     @Throws(Exception::class)
     fun migrateFromLargerGrid() {
         enableNewMigrationLogic("5,5")
@@ -1040,14 +1099,169 @@ class GridSizeMigrationTest {
         }
         c.close()
 
-        // All icons fit the first screen
         assertThat(locMap.size).isEqualTo(5)
-        assertThat(locMap[testPackage1]).isEqualTo(0)
-        assertThat(locMap[testPackage2]).isEqualTo(0)
-        assertThat(locMap[testPackage3]).isEqualTo(0)
-        assertThat(locMap[testPackage4]).isEqualTo(0)
-        assertThat(locMap[testPackage5]).isEqualTo(0)
+        if (Flags.gridMigrationRefactor()) {
+            // Lawnchair: every item still fits, so each one stays on its own screen.
+            assertThat(locMap[testPackage1]).isEqualTo(0)
+            assertThat(locMap[testPackage2]).isEqualTo(0)
+            assertThat(locMap[testPackage3]).isEqualTo(1)
+            assertThat(locMap[testPackage4]).isEqualTo(1)
+            assertThat(locMap[testPackage5]).isEqualTo(2)
+        } else {
+            // All icons fit the first screen
+            assertThat(locMap[testPackage1]).isEqualTo(0)
+            assertThat(locMap[testPackage2]).isEqualTo(0)
+            assertThat(locMap[testPackage3]).isEqualTo(0)
+            assertThat(locMap[testPackage4]).isEqualTo(0)
+            assertThat(locMap[testPackage5]).isEqualTo(0)
+        }
     }
+
+    /**
+     * Lawnchair: an item that no longer fits must not push items that still fit out of their cell.
+     */
+    @Test
+    @Throws(Exception::class)
+    fun migrateToSmallerGridKeepsItemsThatStillFit() {
+        // Src grid (5x5). Row 0 is the smartspace.
+        // _ _ _ _ _
+        // 1 2 3 4 5
+        // 6 7 _ _ _
+        // _ _ _ _ _
+        // _ _ _ _ _
+        addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 0, 1, testPackage1, 1, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 1, 1, testPackage2, 2, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 2, 1, testPackage3, 3, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 3, 1, testPackage4, 4, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 4, 1, testPackage5, 5, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 0, 2, testPackage6, 6, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 1, 2, testPackage7, 7, TMP_TABLE)
+
+        migrateWorkspaceWithRefactoredLogic(4, 4)
+
+        // Expected (4x4): only 5 moves, into the first free cell.
+        // _ _ _ _
+        // 1 2 3 4
+        // 6 7 5 _
+        // _ _ _ _
+        val locMap = queryWorkspaceLocMap()
+        assertThat(locMap.size).isEqualTo(7)
+        assertThat(locMap[testPackage1]).isEqualTo(Triple(0, 0, 1))
+        assertThat(locMap[testPackage2]).isEqualTo(Triple(0, 1, 1))
+        assertThat(locMap[testPackage3]).isEqualTo(Triple(0, 2, 1))
+        assertThat(locMap[testPackage4]).isEqualTo(Triple(0, 3, 1))
+        assertThat(locMap[testPackage6]).isEqualTo(Triple(0, 0, 2))
+        assertThat(locMap[testPackage7]).isEqualTo(Triple(0, 1, 2))
+        assertThat(locMap[testPackage5]).isEqualTo(Triple(0, 2, 2))
+    }
+
+    /**
+     * Lawnchair: an item carried over from a full screen must not push the next screen's items out
+     * of their cells.
+     */
+    @Test
+    @Throws(Exception::class)
+    fun migrateToSmallerGridCarriedOverItemDoesNotMoveNextScreen() {
+        // Src grid (5x5). Screen 0 is full for a 4x4 grid, so X must move to screen 1.
+        // screen 0      screen 1
+        // _ _ _ _ _     1 2 _ _ _
+        // g g g g _     _ _ _ _ _
+        // g g g g _     _ _ _ _ _
+        // g g g g X     _ _ _ _ _
+        // _ _ _ _ _     _ _ _ _ _
+        var id = addFullScreenOfGridItems()
+        addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 4, 3, testPackage9, id++, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 1, CONTAINER_DESKTOP, 0, 0, testPackage1, id++, TMP_TABLE)
+        addItem(ITEM_TYPE_APPLICATION, 1, CONTAINER_DESKTOP, 1, 0, testPackage2, id, TMP_TABLE)
+
+        migrateWorkspaceWithRefactoredLogic(4, 4)
+
+        val locMap = queryWorkspaceLocMap()
+        assertThat(locMap.size).isEqualTo(15)
+        assertGridItemsKeptOnScreen0(locMap)
+        assertThat(locMap[testPackage1]).isEqualTo(Triple(1, 0, 0))
+        assertThat(locMap[testPackage2]).isEqualTo(Triple(1, 1, 0))
+        assertThat(locMap[testPackage9]).isEqualTo(Triple(1, 2, 0))
+    }
+
+    /**
+     * Lawnchair: items that fit on no existing screen go to a new screen. They must never be placed
+     * on top of items already placed, since the loader deletes overlapping items.
+     */
+    @Test
+    @Throws(Exception::class)
+    fun migrateToSmallerGridMovesLeftoversToNewScreen() {
+        // Src grid (5x5), screen 0 only. The destination DB is empty (first switch to this grid),
+        // and the 4x4 grid has room for the twelve g items only.
+        // _ _ _ _ _
+        // g g g g _
+        // g g g g _
+        // g g g g X
+        // _ _ _ _ _
+        val id = addFullScreenOfGridItems()
+        addItem(ITEM_TYPE_APPLICATION, 0, CONTAINER_DESKTOP, 4, 3, testPackage9, id, TMP_TABLE)
+
+        migrateWorkspaceWithRefactoredLogic(4, 4)
+
+        val locMap = queryWorkspaceLocMap()
+        assertThat(locMap.size).isEqualTo(13)
+        assertGridItemsKeptOnScreen0(locMap)
+        assertThat(locMap[testPackage9]).isEqualTo(Triple(1, 0, 0))
+    }
+
+    /** Fills rows 1-3, columns 0-3 of screen 0 in the src table. Returns the next free id. */
+    private fun addFullScreenOfGridItems(): Int {
+        var id = 100
+        for (y in 1..3) {
+            for (x in 0..3) {
+                addItem(
+                    ITEM_TYPE_APPLICATION,
+                    0,
+                    CONTAINER_DESKTOP,
+                    x,
+                    y,
+                    gridPackage(x, y),
+                    id++,
+                    TMP_TABLE,
+                )
+            }
+        }
+        return id
+    }
+
+    private fun assertGridItemsKeptOnScreen0(locMap: Map<String?, Triple<Int, Int, Int>>) {
+        for (y in 1..3) {
+            for (x in 0..3) {
+                assertThat(locMap[gridPackage(x, y)]).isEqualTo(Triple(0, x, y))
+            }
+        }
+    }
+
+    private fun gridPackage(x: Int, y: Int) = "com.android.launcher3.validpackage.grid$x$y"
+
+    private fun migrateWorkspaceWithRefactoredLogic(columns: Int, rows: Int) {
+        GridSizeMigrationLogic()
+            .migrateWorkspace(
+                DbReader(db, TMP_TABLE, context),
+                DbReader(db, TABLE_NAME, context),
+                dbHelper,
+                Point(columns, rows),
+                mutableListOf(),
+            )
+    }
+
+    private fun queryWorkspaceLocMap(): Map<String?, Triple<Int, Int, Int>> =
+        parseLocMap(
+            db.query(
+                TABLE_NAME,
+                arrayOf(SCREEN, CELLX, CELLY, INTENT),
+                "container=$CONTAINER_DESKTOP",
+                null,
+                null,
+                null,
+                null,
+            ) ?: throw IllegalStateException()
+        )
 
     private fun enableNewMigrationLogic(srcGridSize: String) {
         LauncherPrefs.get(context).putSync(WORKSPACE_SIZE.to(srcGridSize))

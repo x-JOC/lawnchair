@@ -49,7 +49,7 @@ data class AppSuggestions(
  * [AppSuggestionRanker]:
  *  - [SuggestionTab.FREQUENT]: most-used apps by foreground time (needs usage access).
  *  - [SuggestionTab.RECENT]: most-recently-used apps (needs usage access).
- *  - [SuggestionTab.NEW]: most-recently installed apps (no permission needed).
+ *  - [SuggestionTab.NEW]: most-recently installed or updated apps, like Nova's New/Updated tab (no permission needed).
  *
  * All work is blocking (package-manager + usage-stats queries) and must therefore run on a
  * background thread. It does not touch the app model, so it should not run on the model executor
@@ -111,11 +111,11 @@ object SuggestedAppsProvider {
             emptyList()
         }
         // Skip apps with an install session in progress (e.g. promise icons): they can't be opened yet.
-        val installTimes = firstInstallTimes(context)
+        val installTimes = installTimes(context)
         val installs = byPackage
             .filterValues { (it.runtimeStatusFlags and ItemInfoWithIcon.FLAG_INSTALL_SESSION_ACTIVE) == 0 }
             .keys
-            .mapNotNull { pkg -> installTimes[pkg]?.let { AppSuggestionRanker.InstallInfo(pkg, it) } }
+            .mapNotNull { pkg -> installTimes[pkg] }
 
         fun keysToApps(keys: List<String>): List<AppInfo> = keys.mapNotNull { byPackage[it] }
 
@@ -144,9 +144,11 @@ object SuggestedAppsProvider {
         }
     }
 
-    /** First install time of every package installed for the current user, in one query. */
-    private fun firstInstallTimes(context: Context): Map<String, Long> = try {
-        context.packageManager.getInstalledPackages(0).associate { it.packageName to it.firstInstallTime }
+    /** Install and update times of every package installed for the current user, in one query. */
+    private fun installTimes(context: Context): Map<String, AppSuggestionRanker.InstallInfo> = try {
+        context.packageManager.getInstalledPackages(0).associate {
+            it.packageName to AppSuggestionRanker.InstallInfo(it.packageName, it.firstInstallTime, it.lastUpdateTime)
+        }
     } catch (_: Exception) {
         emptyMap()
     }

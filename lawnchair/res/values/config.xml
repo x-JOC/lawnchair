@@ -125,7 +125,7 @@
     <bool name="config_default_allow_widget_overlap">false</bool>
     <bool name="config_default_enable_subgrid_positioning">false</bool>
     <bool name="config_default_force_widget_resize">false</bool>
-    <bool name="config_default_widget_unlimited_size">false</bool>
+    <bool name="config_default_widget_unlimited_size">true</bool>
     <bool name="config_default_show_status_bar">true</bool>
     <bool name="config_default_remember_position">false</bool>
     <bool name="config_default_dynamic_hide_status_bar_clock">false</bool>
@@ -174,7 +174,7 @@
     <item name="config_default_drawer_icon_label_size_factor" type="dimen" format="float">1.0</item>
     <item name="config_default_drawer_cell_height_factor" type="dimen" format="float">1.0</item>
     <item name="config_default_drawer_left_right_factor" type="dimen" format="float">0.1</item>
-    <item name="config_default_search_max_result_count" type="dimen" format="integer">5</item>
+    <item name="config_default_search_max_result_count" type="dimen" format="integer">2147483647</item>
     <item name="config_default_files_max_result_count" type="dimen" format="integer">3</item>
     <item name="config_default_people_max_result_count" type="dimen" format="integer">10</item>
     <item name="config_default_suggestion_max_result_count" type="dimen" format="integer">3</item>

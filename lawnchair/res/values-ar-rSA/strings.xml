@@ -829,4 +829,16 @@
     <string name="lawnchair_actions">الإجراءات</string>
     <string name="lawnchair_action_failed">فشل تنفيذ الإجراء</string>
     <string name="please_wait">الرجاء الانتظار…</string>
+    <!-- Personal build: Arabic for strings not yet translated on Crowdin -->
+    <string name="enable_subgrid_positioning_label">الموضع بنصف خانة</string>
+    <string name="enable_subgrid_positioning_description">ضع العناصر وغيّر حجمها بمواضع نصف خانة في الشاشة الرئيسية. توضع العناصر بحرية وقد تتداخل</string>
+    <string name="search_suggested_frequent_title">الأكثر استخدامًا</string>
+    <string name="search_suggested_recent_title">الأخيرة</string>
+    <string name="search_suggested_new_title">جديدة/محدّثة</string>
+    <string name="search_pref_suggested_apps_title">تبويبات الاقتراحات في البحث</string>
+    <string name="search_pref_suggested_apps_description">اعرض التطبيقات الأكثر استخدامًا وآخر ما فتحته والجديدة أو المحدّثة عندما يكون مربع البحث فارغًا</string>
+    <string name="search_suggested_empty_usage">لا يوجد استخدام للتطبيقات خلال آخر 30 يومًا</string>
+    <string name="search_suggested_empty_new">لا توجد تطبيقات مثبّتة أو محدّثة خلال آخر 30 يومًا</string>
+    <string name="search_suggested_tab_role">تبويب</string>
+    <string name="max_apps_result_count_all">الكل</string>
 </resources>

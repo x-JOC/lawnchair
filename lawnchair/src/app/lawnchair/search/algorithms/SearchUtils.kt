@@ -14,32 +14,74 @@ import me.xdrop.fuzzywuzzy.algorithms.WeightedRatio
 
 object SearchUtils {
     fun normalSearch(apps: List<AppInfo>, query: String, maxResultsCount: Int, hiddenApps: Set<String>, hiddenAppsInSearch: String): List<AppInfo> {
-        // Do an intersection of the words in the query and each title, and filter out all the
-        // apps that don't match all of the words in the query.
-        val queryTextLower = query.lowercase(Locale.getDefault())
+        // Rank the matches before applying the limit, so that a better match is not cut off by
+        // weaker ones that come earlier in the app list. The sort is stable, so apps with the
+        // same match type keep their order.
+        val queryNormalized = normalizeForSearch(query)
         val matcher = StringMatcherUtility.StringMatcher.getInstance()
         return apps.asSequence()
-            .filter { StringMatcherUtility.matches(queryTextLower, it.title.toString(), matcher) }
-            .filterHiddenApps(queryTextLower, hiddenApps, hiddenAppsInSearch)
+            .filterHiddenApps(queryNormalized, hiddenApps, hiddenAppsInSearch)
+            .mapNotNull { app -> matchAppTitle(queryNormalized, app.title.toString(), matcher)?.let { app to it } }
+            .sortedBy { it.second }
             .take(maxResultsCount)
+            .map { it.first }
             .toList()
     }
 
     fun fuzzySearch(apps: List<AppInfo>, query: String, maxResultsCount: Int, hiddenApps: Set<String>, hiddenAppsInSearch: String): List<AppInfo> {
-        val queryTextLower = query.lowercase(Locale.getDefault())
+        val queryNormalized = normalizeForSearch(query)
         val filteredApps = apps.asSequence()
-            .filterHiddenApps(queryTextLower, hiddenApps, hiddenAppsInSearch)
+            .filterHiddenApps(queryNormalized, hiddenApps, hiddenAppsInSearch)
             .toList()
         val matches = FuzzySearch.extractSorted(
-            queryTextLower,
+            queryNormalized,
             filteredApps,
-            { it.sectionName + it.title },
+            { normalizeForSearch(it.sectionName + it.title) },
             WeightedRatio(),
             65,
         )
 
         return matches.take(maxResultsCount)
             .map { it.referent }
+    }
+
+    /**
+     * How well an app title matches the query in the non-fuzzy search, from best to worst.
+     */
+    private enum class AppTitleMatch {
+        EXACT,
+        PREFIX,
+        WORD_START,
+        SUBSTRING,
+    }
+
+    /**
+     * Returns how [title] matches [query] in the non-fuzzy search, or `null` if it doesn't.
+     *
+     * The query must already be normalized with [normalizeForSearch]. The title is normalized
+     * here, keeping its case so that camel case word breaks still work (e.g. "tube" matches
+     * "YouTube").
+     *
+     * The query has to match at the start of a word. Arabic labels often start with an attached
+     * article or prefix (e.g. "al-"), so for Arabic queries any substring of the title also
+     * matches, similar to how [StringMatcherUtility] handles Han characters.
+     */
+    private fun matchAppTitle(query: String, title: String, matcher: StringMatcherUtility.StringMatcher): AppTitleMatch? {
+        if (query.isEmpty()) return null
+        val titleNormalized = normalizeForSearch(title, lowercase = false)
+        val titleLower = titleNormalized.lowercase(Locale.getDefault())
+        return when {
+            titleLower == query -> AppTitleMatch.EXACT
+
+            titleNormalized.length >= query.length &&
+                matcher.matches(query, titleNormalized.substring(0, query.length)) -> AppTitleMatch.PREFIX
+
+            StringMatcherUtility.matches(query, titleNormalized, matcher) -> AppTitleMatch.WORD_START
+
+            query.containsArabicScript() && titleLower.contains(query) -> AppTitleMatch.SUBSTRING
+
+            else -> null
+        }
     }
 
     fun getShortcuts(app: AppInfo, context: Context): List<ShortcutInfo> {
@@ -50,6 +92,11 @@ object SearchUtils {
     }
 }
 
+/**
+ * Filters out hidden apps according to [hiddenAppsInSearch].
+ *
+ * @param query The search query, normalized with [normalizeForSearch].
+ */
 fun Sequence<AppInfo>.filterHiddenApps(
     query: String,
     hiddenApps: Set<String>,
@@ -63,7 +110,7 @@ fun Sequence<AppInfo>.filterHiddenApps(
         HiddenAppsInSearch.IF_NAME_TYPED -> {
             filter {
                 it.toComponentKey().toString() !in hiddenApps ||
-                    it.title.toString().lowercase(Locale.getDefault()) == query
+                    normalizeForSearch(it.title.toString()) == query
             }
         }
 

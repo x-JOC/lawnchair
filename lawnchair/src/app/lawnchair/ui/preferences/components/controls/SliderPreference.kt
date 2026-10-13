@@ -38,6 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,9 @@ private enum class SliderThreshold {
     END,
 }
 
+/**
+ * @param valueLabel Optional text to show for a value, replacing the default number or percentage.
+ */
 @Composable
 fun SliderPreference(
     label: String,
@@ -67,6 +72,7 @@ fun SliderPreference(
     showAsPercentage: Boolean = false,
     showUnit: String = "",
     enabled: Boolean = true,
+    valueLabel: ((Int) -> String)? = null,
 ) {
     val transformedAdapter = rememberTransformAdapter(
         adapter = adapter,
@@ -83,6 +89,7 @@ fun SliderPreference(
         showAsPercentage = showAsPercentage,
         showUnit = showUnit,
         enabled = enabled,
+        valueLabel = valueLabel?.let { { value: Float -> it(value.roundToInt()) } },
     )
 }
 
@@ -96,6 +103,7 @@ fun SliderPreference(
     showAsPercentage: Boolean = false,
     showUnit: String = "",
     enabled: Boolean = true,
+    valueLabel: ((Float) -> String)? = null,
 ) {
     var adapterValue by adapter
 
@@ -111,6 +119,7 @@ fun SliderPreference(
         showAsPercentage = showAsPercentage,
         showUnit = showUnit,
         enabled = enabled,
+        valueLabel = valueLabel,
     )
 }
 
@@ -125,6 +134,7 @@ private fun SliderPreference(
     showAsPercentage: Boolean = false,
     showUnit: String = "",
     enabled: Boolean = true,
+    valueLabel: ((Float) -> String)? = null,
 ) {
     var sliderValue by remember { mutableFloatStateOf(value) }
     var thresholdReached by remember { mutableStateOf<SliderThreshold?>(null) }
@@ -160,7 +170,9 @@ private fun SliderPreference(
                 ) {
                     val value = snapSliderValue(valueRange.start, sliderValue, step)
                     Text(
-                        text = if (showAsPercentage) {
+                        text = if (valueLabel != null) {
+                            valueLabel(value)
+                        } else if (showAsPercentage) {
                             stringResource(
                                 id = R.string.n_percent,
                                 (value * 100).roundToInt(),
@@ -215,7 +227,17 @@ private fun SliderPreference(
                 steps = getSteps(valueRange, step),
                 modifier = Modifier
                     .padding(top = 2.dp, bottom = 8.dp)
-                    .height(24.dp),
+                    .height(24.dp)
+                    .then(
+                        if (valueLabel != null) {
+                            // Let accessibility services read the label instead of a percentage.
+                            Modifier.semantics {
+                                stateDescription = valueLabel(snapSliderValue(valueRange.start, sliderValue, step))
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 enabled = enabled,
             )
         },

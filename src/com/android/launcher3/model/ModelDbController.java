@@ -131,6 +131,19 @@ public class ModelDbController {
         }
     }
 
+    // Lawnchair: let a restored layout replace the database files under this controller
+    /**
+     * Closes the open database, so that the next access reopens the file selected by
+     * {@link LauncherPrefs#DB_FILE} instead of a handle to a file that was moved away.
+     */
+    @WorkerThread
+    public synchronized void closeDb() {
+        if (mOpenHelper != null) {
+            mOpenHelper.close();
+            mOpenHelper = null;
+        }
+    }
+
     protected DatabaseHelper createDatabaseHelper(boolean forMigration, String dbFile) {
         boolean isSandbox = mContext instanceof SandboxContext;
         String dbName = isSandbox ? null : InvariantDeviceProfile.INSTANCE.get(mContext).dbFile;

@@ -633,6 +633,7 @@ class PreferenceManager2 @Inject constructor(
         defaultValue = context.resources.getString(R.string.custom),
     )
 
+    // Int.MAX_VALUE shows all matching apps.
     val maxAppSearchResultCount = preference(
         key = intPreferencesKey(name = "max_search_result_count"),
         defaultValue = resourceProvider.getInt(R.dimen.config_default_search_max_result_count),

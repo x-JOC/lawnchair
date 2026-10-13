@@ -9,7 +9,6 @@ import app.lawnchair.search.algorithms.filterHiddenApps
 import app.lawnchair.search.algorithms.normalizeForSearch
 import com.android.launcher3.model.AllAppsList
 import com.android.launcher3.model.data.AppInfo
-import com.android.launcher3.search.StringMatcherUtility
 
 object AppSearchProvider {
 
@@ -25,21 +24,10 @@ object AppSearchProvider {
         val appResults = if (enableFuzzySearch) {
             fuzzySearch(allApps.data, queryNormalized, maxAppResults, hiddenApps, hiddenAppsInSearch)
         } else {
-            normalSearch(allApps.data, queryNormalized, maxAppResults, hiddenApps, hiddenAppsInSearch)
+            SearchUtils.normalSearch(allApps.data, queryNormalized, maxAppResults, hiddenApps, hiddenAppsInSearch)
         }
 
         return appResults.map { SearchResult.App(data = it) }
-    }
-
-    private fun normalSearch(apps: List<AppInfo>, query: String, maxResultsCount: Int, hiddenApps: Set<String>, hiddenAppsInSearch: String): List<AppInfo> {
-        // Do an intersection of the words in the query and each title, and filter out all the
-        // apps that don't match all of the words in the query.
-        val matcher = StringMatcherUtility.StringMatcher.getInstance()
-        return apps.asSequence()
-            .filter { SearchUtils.matchesAppTitle(query, it.title.toString(), matcher) }
-            .filterHiddenApps(query, hiddenApps, hiddenAppsInSearch)
-            .take(maxResultsCount)
-            .toList()
     }
 
     private fun fuzzySearch(apps: List<AppInfo>, query: String, maxResultsCount: Int, hiddenApps: Set<String>, hiddenAppsInSearch: String): List<AppInfo> {

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import app.lawnchair.preferences.PreferenceAdapter
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences.preferenceManager
+import app.lawnchair.preferences.rememberTransformAdapter
 import app.lawnchair.preferences2.preferenceManager2
 import app.lawnchair.search.LawnchairRecentSuggestionProvider
 import app.lawnchair.ui.preferences.components.PermissionDialog
@@ -160,28 +161,30 @@ fun GenericSearchProviderPreference(
         modifier = modifier,
     ) {
         PreferenceGroup {
-            SliderPreference(
-                label = stringResource(
-                    when (provider) {
-                        SearchProviderId.APPS -> R.string.max_apps_result_count_title
-                        SearchProviderId.HISTORY -> R.string.max_recent_result_count_title
-                        SearchProviderId.SETTINGS -> R.string.max_settings_entry_result_count_title
-                        SearchProviderId.WEB -> R.string.max_suggestion_result_count_title
-                        else -> return@PreferenceGroup
+            if (provider == SearchProviderId.APPS) {
+                MaxAppResultCountPreference(adapter = prefs2.maxAppSearchResultCount.getAdapter())
+            } else {
+                SliderPreference(
+                    label = stringResource(
+                        when (provider) {
+                            SearchProviderId.HISTORY -> R.string.max_recent_result_count_title
+                            SearchProviderId.SETTINGS -> R.string.max_settings_entry_result_count_title
+                            SearchProviderId.WEB -> R.string.max_suggestion_result_count_title
+                            else -> return@PreferenceGroup
+                        },
+                    ),
+                    adapter = prefs2.let {
+                        when (provider) {
+                            SearchProviderId.HISTORY -> it.maxRecentResultCount
+                            SearchProviderId.SETTINGS -> it.maxSettingsEntryResultCount
+                            SearchProviderId.WEB -> it.maxWebSuggestionResultCount
+                            else -> return@PreferenceGroup
+                        }.getAdapter()
                     },
-                ),
-                adapter = prefs2.let {
-                    when (provider) {
-                        SearchProviderId.APPS -> it.maxAppSearchResultCount
-                        SearchProviderId.HISTORY -> it.maxRecentResultCount
-                        SearchProviderId.SETTINGS -> it.maxSettingsEntryResultCount
-                        SearchProviderId.WEB -> it.maxWebSuggestionResultCount
-                        else -> return@PreferenceGroup
-                    }.getAdapter()
-                },
-                valueRange = 2..10,
-                step = 1,
-            )
+                    valueRange = 2..10,
+                    step = 1,
+                )
+            }
 
             when (provider) {
                 SearchProviderId.APPS -> {
@@ -229,4 +232,27 @@ fun GenericSearchProviderPreference(
             }
         }
     }
+}
+
+/**
+ * The last slider position shows all matching apps, which is stored as [Int.MAX_VALUE].
+ */
+private const val MAX_APP_RESULT_COUNT_ALL_POSITION = 21
+
+@Composable
+private fun MaxAppResultCountPreference(
+    adapter: PreferenceAdapter<Int>,
+) {
+    val allLabel = stringResource(R.string.max_apps_result_count_all)
+    SliderPreference(
+        label = stringResource(R.string.max_apps_result_count_title),
+        adapter = rememberTransformAdapter(
+            adapter = adapter,
+            transformGet = { it.coerceAtMost(MAX_APP_RESULT_COUNT_ALL_POSITION) },
+            transformSet = { if (it >= MAX_APP_RESULT_COUNT_ALL_POSITION) Int.MAX_VALUE else it },
+        ),
+        valueRange = 2..MAX_APP_RESULT_COUNT_ALL_POSITION,
+        step = 1,
+        valueLabel = { if (it >= MAX_APP_RESULT_COUNT_ALL_POSITION) allLabel else it.toString() },
+    )
 }

@@ -243,6 +243,9 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         }
 
         when {
+            // The tab row ends with its own search settings button.
+            suggestions != null -> Unit
+
             results.isNotEmpty() -> {
                 results.add(SearchResult.Action.SearchSettings)
             }

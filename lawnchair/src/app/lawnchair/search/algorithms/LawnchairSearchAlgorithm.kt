@@ -228,14 +228,6 @@ sealed class LawnchairSearchAlgorithm(
         // Only the local search algorithm caches zero-state suggestions.
     }
 
-    /**
-     * Reloads the zero-state suggestions if they are on screen and out of date, e.g. after the
-     * user turned on usage access and came back to the launcher.
-     */
-    open fun refreshSuggestionsIfStale(callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
-        // Only the local search algorithm shows zero-state suggestion tabs.
-    }
-
     companion object {
 
         const val APP_SEARCH = "appSearch"

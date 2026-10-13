@@ -46,13 +46,10 @@ sealed interface SearchResult {
 
         /**
          * The header control for the zero-state app suggestions. Carries the currently
-         * selected tab, whether usage access has been granted (so the view can show a
-         * "turn on usage access" prompt when it hasn't) and whether the selected tab has
-         * no apps (so the view can explain the empty tab).
+         * selected tab and whether it has no apps (so the view can explain the empty tab).
          */
         data class SuggestionTabs(
             val selected: SuggestionTab,
-            val usageGranted: Boolean,
             val selectedEmpty: Boolean,
         ) : Action
     }

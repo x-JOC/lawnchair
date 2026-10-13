@@ -349,7 +349,6 @@ class SearchTargetFactory(
 
     fun createSuggestionTabsTarget(
         selected: SuggestionTab,
-        usageGranted: Boolean,
         selectedEmpty: Boolean,
     ): SearchTargetCompat {
         val id = "suggestion_tabs"
@@ -370,7 +369,6 @@ class SearchTargetFactory(
             setExtras(
                 bundleOf(
                     "selected" to selected.ordinal,
-                    "usageGranted" to usageGranted,
                     "selectedEmpty" to selectedEmpty,
                 ),
             )

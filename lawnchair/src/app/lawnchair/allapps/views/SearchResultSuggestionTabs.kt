@@ -1,19 +1,15 @@
 package app.lawnchair.allapps.views
 
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
-import android.net.Uri
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.AttributeSet
 import android.view.View
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
@@ -35,8 +31,7 @@ import com.android.launcher3.util.Themes
  * The header control for the zero-state app suggestions: a segmented control with three
  * switchable tabs (frequent / recent / new) inside a rounded track, the selected one shown
  * as a filled accent pill. Tapping a tab asks the search input to re-render the empty state
- * for that tab. While usage access is missing, a tappable prompt is shown below the tabs so
- * the user can turn it on, whichever tab is selected.
+ * for that tab.
  */
 class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
     LinearLayout(context, attrs),
@@ -47,9 +42,6 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
     private lateinit var recentTab: TextView
     private lateinit var newTab: TextView
     private lateinit var emptyHint: TextView
-    private lateinit var usageAccessPrompt: View
-    private lateinit var usageAccessTitle: TextView
-    private lateinit var usageAccessDescription: TextView
 
     private val density = resources.displayMetrics.density
 
@@ -74,15 +66,6 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
         recentTab = ViewCompat.requireViewById(this, R.id.tab_recent)
         newTab = ViewCompat.requireViewById(this, R.id.tab_new)
         emptyHint = ViewCompat.requireViewById(this, R.id.empty_hint)
-        usageAccessPrompt = ViewCompat.requireViewById(this, R.id.usage_access_prompt)
-        usageAccessTitle = ViewCompat.requireViewById(this, R.id.usage_access_title)
-        usageAccessDescription = ViewCompat.requireViewById(this, R.id.usage_access_description)
-
-        usageAccessDescription.text = context.getString(
-            R.string.missing_usage_access_desc,
-            context.getString(R.string.derived_app_name),
-        )
-        usageAccessPrompt.setOnClickListener { openUsageAccessSettings() }
 
         // Delegates are set once; they read the selected state from the view at query time.
         ViewCompat.setAccessibilityDelegate(
@@ -111,15 +94,6 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
                 },
             )
         }
-        ViewCompat.setAccessibilityDelegate(
-            usageAccessPrompt,
-            object : AccessibilityDelegateCompat() {
-                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
-                    super.onInitializeAccessibilityNodeInfo(host, info)
-                    info.className = Button::class.java.name
-                }
-            },
-        )
     }
 
     override val isQuickLaunch: Boolean = false
@@ -140,13 +114,10 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
         }
 
         tabsContainer.background = trackBackground(secondaryColor)
-        usageAccessTitle.setTextColor(accentColor)
-        usageAccessDescription.setTextColor(secondaryColor)
         emptyHint.setTextColor(secondaryColor)
 
         val extras = target.extras
         val selected = TAB_ORDER.getOrElse(extras.getInt("selected", 0)) { SuggestionTab.FREQUENT }
-        val usageGranted = extras.getBoolean("usageGranted", false)
         val selectedEmpty = extras.getBoolean("selectedEmpty", false)
 
         // Reset all segments first, then highlight the selected one. Text weight stays constant
@@ -159,14 +130,9 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
             view.setTextColor(if (isSelected) onAccentColor else secondaryColor)
         }
 
-        usageAccessPrompt.isVisible = !usageGranted
-
-        // Without usage access the frequent/recent tabs are always empty and the prompt already
-        // explains why, so only explain an empty tab when the prompt doesn't cover it.
-        val usageBasedTab = selected != SuggestionTab.NEW
-        emptyHint.isVisible = selectedEmpty && (usageGranted || !usageBasedTab)
+        emptyHint.isVisible = selectedEmpty
         emptyHint.setText(
-            if (usageBasedTab) R.string.search_suggested_empty_usage else R.string.search_suggested_empty_new,
+            if (selected == SuggestionTab.NEW) R.string.search_suggested_empty_new else R.string.search_suggested_empty_launches,
         )
 
         // Rebinding after a tab switch can drop accessibility focus; put it back on the tab the
@@ -196,20 +162,6 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
         }
         val searchUiManager = context.launcher.appsView.searchUiManager
         (searchUiManager as? AllAppsSearchInput)?.selectSuggestionTab(tab)
-    }
-
-    private fun openUsageAccessSettings() {
-        // Open Lawnchair's own page where supported, otherwise the generic usage access list.
-        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-            data = Uri.fromParts("package", context.packageName, null)
-        }
-        try {
-            context.startActivity(intent)
-        } catch (_: Exception) {
-            try {
-                context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-            } catch (_: Exception) {}
-        }
     }
 
     private companion object {

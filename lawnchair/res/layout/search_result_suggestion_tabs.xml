@@ -79,34 +79,4 @@
         android:textAppearance="?android:attr/textAppearanceSmall"
         android:visibility="gone" />
 
-    <LinearLayout
-        android:id="@+id/usage_access_prompt"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:background="?android:attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical"
-        android:minHeight="48dp"
-        android:orientation="vertical"
-        android:paddingHorizontal="6dp"
-        android:paddingVertical="8dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/usage_access_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/missing_usage_access_label"
-            android:textAppearance="?android:attr/textAppearanceSmall"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/usage_access_description"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textAppearance="?android:attr/textAppearanceSmall" />
-    </LinearLayout>
-
 </app.lawnchair.allapps.views.SearchResultSuggestionTabs>

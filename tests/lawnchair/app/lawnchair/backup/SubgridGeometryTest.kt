@@ -40,15 +40,18 @@ class SubgridGeometryTest {
 
     @Test
     fun halfHeightSpanRoundTripsWithoutAZeroBaseSpan() {
-        val original = ItemInfo().apply {
-            cellX = 4
-            cellY = 1
-            subY = 1
-            spanY = 1
-            subSpanY = -1
-        }
+        // ItemInfo.writeToValues reads the subgrid preference, which needs the launcher's
+        // component, so write the geometry columns the same way it does with subgrid enabled.
         val values = ContentValues()
-        original.writeToValues(ContentWriter(values, RuntimeEnvironment.getApplication()))
+        ContentWriter(values, RuntimeEnvironment.getApplication())
+            .put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APPWIDGET)
+            .put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP)
+            .put(Favorites.SCREEN, 0)
+            .put(Favorites.RANK, 0)
+            .putSubgrid(Favorites.CELLX, 4, 0, true)
+            .putSubgrid(Favorites.CELLY, 1, 1, true)
+            .putSubgrid(Favorites.SPANX, 1, 0, true)
+            .putSubgrid(Favorites.SPANY, 1, -1, true)
         assertEquals(0.5f, values.getAsFloat(Favorites.SPANY))
         val restored = ItemInfo()
         restored.readFromValues(values)
@@ -56,5 +59,16 @@ class SubgridGeometryTest {
         assertEquals(-1, restored.subSpanY)
         assertEquals(1, restored.cellY)
         assertEquals(1, restored.subY)
+    }
+
+    @Test
+    fun halfStepIsNotPersistedWhenSubgridIsDisabled() {
+        val values = ContentValues()
+        ContentWriter(values, RuntimeEnvironment.getApplication())
+            .putSubgrid(Favorites.CELLX, 2, 1, false)
+            .putSubgrid(Favorites.SPANX, 1, -1, false)
+        assertEquals(2, values.getAsInteger(Favorites.CELLX))
+        assertEquals(0, ItemInfo.decodeSubgridStep(values.getAsFloat(Favorites.CELLX)))
+        assertEquals(1, values.getAsInteger(Favorites.SPANX))
     }
 }

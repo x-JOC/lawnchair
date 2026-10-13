@@ -21,12 +21,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.UserHandle;
 
+import androidx.annotation.VisibleForTesting;
+
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherSettings;
 import com.android.launcher3.icons.BitmapInfo;
 import com.android.launcher3.icons.GraphicsUtils;
 import com.android.launcher3.model.ModelDbController;
 import com.android.launcher3.pm.UserCache;
+
+import app.lawnchair.LawnchairApp;
+import app.lawnchair.preferences2.PreferenceCacheExtensionsKt;
+import app.lawnchair.preferences2.PreferenceManager2;
 
 /**
  * A wrapper around {@link ContentValues} with some utility methods.
@@ -68,12 +74,29 @@ public class ContentWriter {
      * Lawnchair: Subgrid positioning. Stores {@code base + 0.5} as a float (REAL) when a half-step is
      * present, otherwise the plain integer. Legacy/integer readers truncate the REAL back to the base
      * cell, so this is backward compatible with no schema change.
+     *
+     * <p>The half-step is only written while subgrid positioning is enabled. With it off, items are
+     * laid out on whole cells, and a whole-cell write (resize, reorder, move) must not re-persist a
+     * stale half-step that would move the item once the setting is turned back on.
      */
     public ContentWriter putSubgrid(String key, int base, int sub) {
-        if (sub != 0) {
+        return putSubgrid(key, base, sub, sub != 0 && isSubgridEnabled());
+    }
+
+    /** Lawnchair: Subgrid positioning. See {@link #putSubgrid(String, int, int)}. */
+    @VisibleForTesting
+    public ContentWriter putSubgrid(String key, int base, int sub, boolean subgridEnabled) {
+        if (sub != 0 && subgridEnabled) {
             return put(key, base + sub * 0.5f);
         }
         return put(key, base);
+    }
+
+    private boolean isSubgridEnabled() {
+        // PendingRequestArgs writes itself to a parcel without a context.
+        Context context = mContext != null ? mContext : LawnchairApp.getInstance();
+        return PreferenceCacheExtensionsKt.firstCached(
+                PreferenceManager2.getInstance(context).getEnableSubgridPositioning());
     }
 
     public ContentWriter put(String key, Long value) {

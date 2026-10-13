@@ -1,9 +1,8 @@
-package app.lawnchair.backup
+package com.android.launcher3.celllayout
 
 import android.content.ContentValues
 import android.graphics.Point
 import com.android.launcher3.LauncherSettings.Favorites
-import com.android.launcher3.celllayout.CellLayoutLayoutParams
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.util.ContentWriter
 import org.junit.Assert.assertEquals

@@ -40,6 +40,7 @@ import com.android.launcher3.pm.UserCache
 import com.android.launcher3.provider.LauncherDbUtils
 import com.android.launcher3.util.rule.TestStabilityRule
 import com.android.launcher3.util.rule.TestStabilityRule.Stability
+import com.google.common.truth.Truth.assertWithMessage
 import java.util.Random
 import org.junit.Before
 import org.junit.Test
@@ -103,6 +104,26 @@ class ValidGridMigrationUnitTest {
                 "Item doesn't fit in the grid. Size = ${dstGrid.size} Item = $it"
             }
         }
+
+        // Lawnchair: no two desktop items may share a cell, since the loader deletes items that
+        // overlap.
+        resultItems
+            .filter { it.container == Favorites.CONTAINER_DESKTOP }
+            .groupBy { it.screenId }
+            .forEach { (screenId, items) ->
+                val occupiedBy = mutableMapOf<Pair<Int, Int>, WorkspaceItem>()
+                items.forEach { item ->
+                    for (x in item.x until item.x + item.spanX) {
+                        for (y in item.y until item.y + item.spanY) {
+                            assertWithMessage(
+                                    "Items overlap on screen $screenId at ($x, $y). Item = $item"
+                                )
+                                .that(occupiedBy.put(x to y, item))
+                                .isNull()
+                        }
+                    }
+                }
+            }
 
         val srcCountMap = itemsToMap(srcGrid.items)
         val resultCountMap = itemsToMap(resultItems)

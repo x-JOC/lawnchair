@@ -268,9 +268,9 @@ data object SuggestedAppsSectionBuilder : SectionBuilder {
         val targets = mutableListOf<SearchTargetCompat>()
         targets.add(factory.createSuggestionTabsTarget(tabs.selected, tabs.usageGranted))
 
+        // The provider already emits only the selected tab's apps, so no tab filter is needed here.
         results.filterIsInstance<SearchResult.SuggestedApp>()
-            .filter { it.tab == tabs.selected }
-            .forEach { targets.add(factory.createAppSearchTarget(it.data, asRow = false, idNamespace = "suggest")) }
+            .forEach { targets.add(factory.createAppSearchTarget(it.data, asRow = false)) }
 
         targets.add(factory.createHeaderTarget(SPACE))
         return targets

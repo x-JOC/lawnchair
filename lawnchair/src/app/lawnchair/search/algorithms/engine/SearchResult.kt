@@ -12,7 +12,7 @@ import com.android.launcher3.model.data.AppInfo
 /**
  * The three zero-state suggestion categories shown as switchable tabs in the
  * empty app-drawer search (Nova-style): most-used, recently-used and newly
- * installed/updated apps.
+ * installed apps.
  */
 enum class SuggestionTab { FREQUENT, RECENT, NEW }
 

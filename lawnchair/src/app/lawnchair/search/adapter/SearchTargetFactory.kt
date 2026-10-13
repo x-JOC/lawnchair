@@ -50,13 +50,13 @@ import okio.ByteString
 class SearchTargetFactory(
     private val context: Context,
 ) {
-    fun createAppSearchTarget(appInfo: AppInfo, asRow: Boolean = false, idNamespace: String = ""): SearchTargetCompat {
+    fun createAppSearchTarget(appInfo: AppInfo, asRow: Boolean = false): SearchTargetCompat {
         val componentName = appInfo.componentName
         val user = appInfo.user
         return SearchTargetCompat.Builder(
             SearchTargetCompat.RESULT_TYPE_APPLICATION,
             if (asRow) LayoutType.SMALL_ICON_HORIZONTAL_TEXT else LayoutType.ICON_SINGLE_VERTICAL_TEXT,
-            generateHashKey(ComponentKey(componentName, user).toString() + idNamespace),
+            generateHashKey(ComponentKey(componentName, user).toString()),
         ).apply {
             setPackageName(componentName?.packageName ?: "")
             setUserHandle(user)

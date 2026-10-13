@@ -958,6 +958,14 @@
 
     <string name="show_suggested_apps_at_drawer_top">Show suggested apps at the top of the drawer</string>
 
+    <string name="search_suggested_frequent_title">Frequent</string>
+    <string name="search_suggested_recent_title">Recent</string>
+    <string name="search_suggested_new_title">New</string>
+    <string name="search_pref_suggested_apps_title">App suggestions</string>
+    <string name="search_pref_suggested_apps_description">Show frequent, recent, and new apps when the search box is empty</string>
+    <string name="search_suggested_usage_access_prompt">Grant usage access to show frequent and recent apps</string>
+    <string name="search_suggested_tab_role">Tab</string>
+
     <string name="perform_wide_search_title">Device search</string>
     <string name="perform_wide_search_description">Search your phone contacts, files, and settings</string>
 

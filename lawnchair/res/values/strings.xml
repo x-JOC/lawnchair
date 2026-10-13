@@ -1012,6 +1012,8 @@
 
     <!-- Maximum xyz for each search result type -->
     <string name="max_apps_result_count_title">Maximum number of apps</string>
+    <!-- Shown instead of a number on the "Maximum number of apps" slider when every matching app is shown -->
+    <string name="all_results_choice">All</string>
     <string name="max_people_result_count_title">Maximum number of people</string>
     <string name="max_file_result_count_title">Maximum number of files</string>
     <string name="max_settings_entry_result_count_title">Maximum number of settings</string>

@@ -83,8 +83,13 @@ class LawnchairBackup(
             }
             // Finish reading before touching the live layout or its bound widget IDs.
             readZip(handlers)
-            val restoredWallpaper = if (contents.hasFlag(INCLUDE_WALLPAPER)) {
-                checkNotNull(BitmapFactory.decodeFile(File(staging, WALLPAPER_FILE_NAME).path)) { "Backup has no valid wallpaper" }
+            // Older backups can list a wallpaper they never stored (the drawable was unavailable when
+            // they were created). Skip it rather than failing the whole restore; a stored one must decode.
+            val stagedWallpaper = File(staging, WALLPAPER_FILE_NAME)
+            val restoredWallpaper = if (contents.hasFlag(INCLUDE_WALLPAPER) && stagedWallpaper.isFile) {
+                withContext(Dispatchers.IO) {
+                    checkNotNull(BitmapFactory.decodeFile(stagedWallpaper.path)) { "Backup has no valid wallpaper" }
+                }
             } else {
                 null
             }

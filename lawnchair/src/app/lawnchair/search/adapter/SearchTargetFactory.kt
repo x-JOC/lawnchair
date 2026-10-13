@@ -347,7 +347,11 @@ class SearchTargetFactory(
         }.build()
     }
 
-    fun createSuggestionTabsTarget(selected: SuggestionTab, usageGranted: Boolean): SearchTargetCompat {
+    fun createSuggestionTabsTarget(
+        selected: SuggestionTab,
+        usageGranted: Boolean,
+        selectedEmpty: Boolean,
+    ): SearchTargetCompat {
         val id = "suggestion_tabs"
 
         // The action doesn't do anything, the view handles tab clicks itself.
@@ -367,6 +371,7 @@ class SearchTargetFactory(
                 bundleOf(
                     "selected" to selected.ordinal,
                     "usageGranted" to usageGranted,
+                    "selectedEmpty" to selectedEmpty,
                 ),
             )
         }.build()

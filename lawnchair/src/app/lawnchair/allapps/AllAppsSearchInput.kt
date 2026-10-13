@@ -35,6 +35,8 @@ import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.launcher
 import app.lawnchair.preferences.PreferenceManager
@@ -120,6 +122,13 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     private var initialPaddingLeft: Int = 0
     private var initialPaddingRight: Int = 0
     private var hideSearchBar = false
+
+    private val launcherResumeObserver = object : DefaultLifecycleObserver {
+        override fun onResume(owner: LifecycleOwner) {
+            // Pick up usage access granted in Settings while the suggestion tabs were showing.
+            searchAlgorithm?.refreshSuggestionsIfStale(this@AllAppsSearchInput)
+        }
+    }
 
     override fun onFinishInflate() {
         super.onFinishInflate()
@@ -427,6 +436,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             appsView.appsStore?.addUpdateListener(this)
         }
         input.viewTreeObserver.addOnGlobalLayoutListener(this)
+        launcher.lifecycle.addObserver(launcherResumeObserver)
     }
 
     override fun onDetachedFromWindow() {
@@ -436,6 +446,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             appsView.appsStore?.removeUpdateListener(this)
         }
         input.viewTreeObserver.removeOnGlobalLayoutListener(this)
+        launcher.lifecycle.removeObserver(launcherResumeObserver)
         setDirectFocus(false)
     }
 

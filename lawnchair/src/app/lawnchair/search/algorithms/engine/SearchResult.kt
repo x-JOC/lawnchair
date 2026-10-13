@@ -11,8 +11,7 @@ import com.android.launcher3.model.data.AppInfo
 
 /**
  * The three zero-state suggestion categories shown as switchable tabs in the
- * empty app-drawer search (Nova-style): most-used, recently-used and newly
- * installed apps.
+ * empty app-drawer search: most-used, recently-used and newly installed apps.
  */
 enum class SuggestionTab { FREQUENT, RECENT, NEW }
 
@@ -47,12 +46,14 @@ sealed interface SearchResult {
 
         /**
          * The header control for the zero-state app suggestions. Carries the currently
-         * selected tab and whether usage access has been granted (so the view can show a
-         * "grant usage access" prompt for the frequent/recent tabs when it hasn't).
+         * selected tab, whether usage access has been granted (so the view can show a
+         * "turn on usage access" prompt when it hasn't) and whether the selected tab has
+         * no apps (so the view can explain the empty tab).
          */
         data class SuggestionTabs(
             val selected: SuggestionTab,
             val usageGranted: Boolean,
+            val selectedEmpty: Boolean,
         ) : Action
     }
 }

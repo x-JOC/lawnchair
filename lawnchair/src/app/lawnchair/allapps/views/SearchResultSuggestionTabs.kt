@@ -6,15 +6,22 @@ import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
+import android.net.Uri
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.AttributeSet
 import android.view.View
+import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.CollectionInfoCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.CollectionItemInfoCompat
 import androidx.core.view.isVisible
 import app.lawnchair.allapps.AllAppsSearchInput
 import app.lawnchair.launcher
@@ -28,8 +35,8 @@ import com.android.launcher3.util.Themes
  * The header control for the zero-state app suggestions: a segmented control with three
  * switchable tabs (frequent / recent / new) inside a rounded track, the selected one shown
  * as a filled accent pill. Tapping a tab asks the search input to re-render the empty state
- * for that tab. When usage access is missing, a tappable prompt is shown for the
- * frequent/recent tabs so the user can grant it.
+ * for that tab. While usage access is missing, a tappable prompt is shown below the tabs so
+ * the user can turn it on, whichever tab is selected.
  */
 class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
     LinearLayout(context, attrs),
@@ -39,7 +46,10 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
     private lateinit var frequentTab: TextView
     private lateinit var recentTab: TextView
     private lateinit var newTab: TextView
-    private lateinit var usageAccessPrompt: TextView
+    private lateinit var emptyHint: TextView
+    private lateinit var usageAccessPrompt: View
+    private lateinit var usageAccessTitle: TextView
+    private lateinit var usageAccessDescription: TextView
 
     private val density = resources.displayMetrics.density
 
@@ -63,14 +73,53 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
         frequentTab = ViewCompat.requireViewById(this, R.id.tab_frequent)
         recentTab = ViewCompat.requireViewById(this, R.id.tab_recent)
         newTab = ViewCompat.requireViewById(this, R.id.tab_new)
+        emptyHint = ViewCompat.requireViewById(this, R.id.empty_hint)
         usageAccessPrompt = ViewCompat.requireViewById(this, R.id.usage_access_prompt)
+        usageAccessTitle = ViewCompat.requireViewById(this, R.id.usage_access_title)
+        usageAccessDescription = ViewCompat.requireViewById(this, R.id.usage_access_description)
 
-        frequentTab.setOnClickListener { onTabClicked(SuggestionTab.FREQUENT) }
-        recentTab.setOnClickListener { onTabClicked(SuggestionTab.RECENT) }
-        newTab.setOnClickListener { onTabClicked(SuggestionTab.NEW) }
-        usageAccessPrompt.setOnClickListener {
-            runCatching { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+        usageAccessDescription.text = context.getString(
+            R.string.missing_usage_access_desc,
+            context.getString(R.string.derived_app_name),
+        )
+        usageAccessPrompt.setOnClickListener { openUsageAccessSettings() }
+
+        // Delegates are set once; they read the selected state from the view at query time.
+        ViewCompat.setAccessibilityDelegate(
+            tabsContainer,
+            object : AccessibilityDelegateCompat() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.setCollectionInfo(CollectionInfoCompat.obtain(1, TAB_ORDER.size, false))
+                }
+            },
+        )
+        TAB_ORDER.forEachIndexed { index, tab ->
+            val view = tabView(tab)
+            view.setOnClickListener { onTabClicked(tab) }
+            ViewCompat.setAccessibilityDelegate(
+                view,
+                object : AccessibilityDelegateCompat() {
+                    override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                        super.onInitializeAccessibilityNodeInfo(host, info)
+                        info.roleDescription = host.context.getString(R.string.search_suggested_tab_role)
+                        info.isSelected = host.isSelected
+                        info.setCollectionItemInfo(
+                            CollectionItemInfoCompat.obtain(0, 1, index, 1, false, host.isSelected),
+                        )
+                    }
+                },
+            )
         }
+        ViewCompat.setAccessibilityDelegate(
+            usageAccessPrompt,
+            object : AccessibilityDelegateCompat() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = Button::class.java.name
+                }
+            },
+        )
     }
 
     override val isQuickLaunch: Boolean = false
@@ -91,25 +140,45 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
         }
 
         tabsContainer.background = trackBackground(secondaryColor)
-        usageAccessPrompt.setTextColor(accentColor)
+        usageAccessTitle.setTextColor(accentColor)
+        usageAccessDescription.setTextColor(secondaryColor)
+        emptyHint.setTextColor(secondaryColor)
 
         val extras = target.extras
         val selected = TAB_ORDER.getOrElse(extras.getInt("selected", 0)) { SuggestionTab.FREQUENT }
         val usageGranted = extras.getBoolean("usageGranted", false)
+        val selectedEmpty = extras.getBoolean("selectedEmpty", false)
 
         // Reset all segments first, then highlight the selected one. Text weight stays constant
         // (no bold) so segments never change width when switching tabs.
         for (tab in TAB_ORDER) {
             val view = tabView(tab)
             val isSelected = tab == selected
+            view.isSelected = isSelected
             view.background = if (isSelected) selectedPill(accentColor) else null
             view.setTextColor(if (isSelected) onAccentColor else secondaryColor)
-            applyTabAccessibility(view, isSelected)
         }
 
-        val needsUsageAccess = !usageGranted &&
-            (selected == SuggestionTab.FREQUENT || selected == SuggestionTab.RECENT)
-        usageAccessPrompt.isVisible = needsUsageAccess
+        usageAccessPrompt.isVisible = !usageGranted
+
+        // Without usage access the frequent/recent tabs are always empty and the prompt already
+        // explains why, so only explain an empty tab when the prompt doesn't cover it.
+        val usageBasedTab = selected != SuggestionTab.NEW
+        emptyHint.isVisible = selectedEmpty && (usageGranted || !usageBasedTab)
+        emptyHint.setText(
+            if (usageBasedTab) R.string.search_suggested_empty_usage else R.string.search_suggested_empty_new,
+        )
+
+        // Rebinding after a tab switch can drop accessibility focus; put it back on the tab the
+        // user just activated. A request whose rebind never came (e.g. superseded by typing) expires.
+        pendingAccessibilityFocus?.let { pending ->
+            val expired = SystemClock.uptimeMillis() - pending.requestedAt > PENDING_FOCUS_TIMEOUT_MS
+            if (expired || pending.tab == selected) pendingAccessibilityFocus = null
+            if (!expired && pending.tab == selected) {
+                val view = tabView(selected)
+                view.post { view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null) }
+            }
+        }
     }
 
     private fun tabView(tab: SuggestionTab): TextView = when (tab) {
@@ -118,27 +187,42 @@ class SearchResultSuggestionTabs(context: Context, attrs: AttributeSet?) :
         SuggestionTab.NEW -> newTab
     }
 
-    /** Announce each segment as a selectable tab so TalkBack reports the selected state. */
-    private fun applyTabAccessibility(view: TextView, isSelected: Boolean) {
-        ViewCompat.setAccessibilityDelegate(
-            view,
-            object : AccessibilityDelegateCompat() {
-                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
-                    super.onInitializeAccessibilityNodeInfo(host, info)
-                    info.roleDescription = host.context.getString(R.string.search_suggested_tab_role)
-                    info.isSelected = isSelected
-                }
-            },
-        )
-    }
-
     private fun onTabClicked(tab: SuggestionTab) {
+        val accessibilityManager = context.getSystemService(AccessibilityManager::class.java)
+        pendingAccessibilityFocus = if (accessibilityManager?.isTouchExplorationEnabled == true) {
+            PendingFocus(tab, SystemClock.uptimeMillis())
+        } else {
+            null
+        }
         val searchUiManager = context.launcher.appsView.searchUiManager
         (searchUiManager as? AllAppsSearchInput)?.selectSuggestionTab(tab)
     }
 
+    private fun openUsageAccessSettings() {
+        // Open Lawnchair's own page where supported, otherwise the generic usage access list.
+        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            try {
+                context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            } catch (_: Exception) {}
+        }
+    }
+
     private companion object {
-        /** Cached once: [SuggestionTab.values] allocates a new array on every call. */
-        val TAB_ORDER: List<SuggestionTab> = SuggestionTab.values().toList()
+        val TAB_ORDER: List<SuggestionTab> = SuggestionTab.entries
+
+        const val PENDING_FOCUS_TIMEOUT_MS = 1000L
+
+        class PendingFocus(val tab: SuggestionTab, val requestedAt: Long)
+
+        /**
+         * The tab to move accessibility focus to when it is next bound. Kept here rather than on
+         * the instance because the list may rebind the header into a different view.
+         */
+        var pendingAccessibilityFocus: PendingFocus? = null
     }
 }

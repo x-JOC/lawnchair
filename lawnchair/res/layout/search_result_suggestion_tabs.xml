@@ -14,70 +14,99 @@
         android:id="@+id/tabs_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:focusable="false">
+        android:baselineAligned="false"
+        android:focusable="false"
+        android:importantForAccessibility="yes"
+        android:orientation="horizontal">
 
         <TextView
             android:id="@+id/tab_frequent"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1"
             android:clickable="true"
             android:ellipsize="end"
             android:focusable="true"
             android:gravity="center"
-            android:maxLines="1"
+            android:maxLines="2"
+            android:minHeight="48dp"
             android:paddingHorizontal="6dp"
-            android:paddingTop="15dp"
-            android:paddingBottom="15dp"
+            android:paddingVertical="10dp"
             android:text="@string/search_suggested_frequent_title"
             android:textSize="16sp" />
 
         <TextView
             android:id="@+id/tab_recent"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1"
             android:clickable="true"
             android:ellipsize="end"
             android:focusable="true"
             android:gravity="center"
-            android:maxLines="1"
+            android:maxLines="2"
+            android:minHeight="48dp"
             android:paddingHorizontal="6dp"
-            android:paddingTop="15dp"
-            android:paddingBottom="15dp"
+            android:paddingVertical="10dp"
             android:text="@string/search_suggested_recent_title"
             android:textSize="16sp" />
 
         <TextView
             android:id="@+id/tab_new"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1"
             android:clickable="true"
             android:ellipsize="end"
             android:focusable="true"
             android:gravity="center"
-            android:maxLines="1"
+            android:maxLines="2"
+            android:minHeight="48dp"
             android:paddingHorizontal="6dp"
-            android:paddingTop="15dp"
-            android:paddingBottom="15dp"
+            android:paddingVertical="10dp"
             android:text="@string/search_suggested_new_title"
             android:textSize="16sp" />
     </LinearLayout>
 
     <TextView
+        android:id="@+id/empty_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingHorizontal="6dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:visibility="gone" />
+
+    <LinearLayout
         android:id="@+id/usage_access_prompt"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
+        android:background="?android:attr/selectableItemBackground"
         android:clickable="true"
         android:focusable="true"
         android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:orientation="vertical"
         android:paddingHorizontal="6dp"
-        android:paddingVertical="10dp"
-        android:text="@string/search_suggested_usage_access_prompt"
-        android:textAppearance="?android:attr/textAppearanceSmall"
-        android:visibility="gone" />
+        android:paddingVertical="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/usage_access_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/missing_usage_access_label"
+            android:textAppearance="?android:attr/textAppearanceSmall"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/usage_access_description"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
+    </LinearLayout>
 
 </app.lawnchair.allapps.views.SearchResultSuggestionTabs>

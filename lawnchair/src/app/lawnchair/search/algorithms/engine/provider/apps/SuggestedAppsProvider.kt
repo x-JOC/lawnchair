@@ -3,14 +3,12 @@ package app.lawnchair.search.algorithms.engine.provider.apps
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
 import android.content.Context
-import android.os.Build
 import android.os.Process
 import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.preferences2.firstCached
 import app.lawnchair.search.algorithms.engine.SuggestionTab
-import app.lawnchair.search.algorithms.filterHiddenApps
-import com.android.launcher3.model.AllAppsList
 import com.android.launcher3.model.data.AppInfo
-import com.patrykmichalik.opto.core.firstBlocking
+import com.android.launcher3.model.data.ItemInfoWithIcon
 
 /**
  * Immutable snapshot of the three zero-state suggestion lists plus whether usage access was
@@ -24,17 +22,23 @@ data class AppSuggestions(
     /** True if at least one tab has something to show. */
     val hasAny: Boolean get() = byTab.values.any { it.isNotEmpty() }
 
+    /**
+     * Whether the tabs should be shown at all. They stay visible while usage access is missing,
+     * even if every list is empty, so the user can still see the prompt to turn it on.
+     */
+    val shouldShowTabs: Boolean get() = hasAny || !usageGranted
+
     fun appsFor(tab: SuggestionTab): List<AppInfo> = byTab[tab].orEmpty()
 
     /** [preferred] if it is non-empty, otherwise the first non-empty tab, otherwise [preferred]. */
     fun firstNonEmptyTab(preferred: SuggestionTab): SuggestionTab {
         if (appsFor(preferred).isNotEmpty()) return preferred
-        return SuggestionTab.values().firstOrNull { appsFor(it).isNotEmpty() } ?: preferred
+        return SuggestionTab.entries.firstOrNull { appsFor(it).isNotEmpty() } ?: preferred
     }
 
     companion object {
         val EMPTY = AppSuggestions(
-            byTab = SuggestionTab.values().associateWith { emptyList() },
+            byTab = SuggestionTab.entries.associateWith { emptyList() },
             usageGranted = false,
         )
     }
@@ -47,9 +51,10 @@ data class AppSuggestions(
  *  - [SuggestionTab.RECENT]: most-recently-used apps (needs usage access).
  *  - [SuggestionTab.NEW]: most-recently installed apps (no permission needed).
  *
- * All work is blocking (package-manager + usage-stats queries) and must therefore run off the
- * main thread, e.g. inside `LauncherModel.enqueueModelUpdateTask { ... }`. Usage access is checked
- * once and the usage window is queried at most once per call.
+ * All work is blocking (package-manager + usage-stats queries) and must therefore run on a
+ * background thread. It does not touch the app model, so it should not run on the model executor
+ * either: callers pass a copy of the app list. Usage access is checked once, and the usage window
+ * and the installed packages are each queried at most once per call.
  */
 object SuggestedAppsProvider {
 
@@ -58,26 +63,12 @@ object SuggestedAppsProvider {
 
     /** Whether the "usage access" special permission has been granted to Lawnchair. */
     fun hasUsageAccess(context: Context): Boolean {
-        return try {
-            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                appOps.unsafeCheckOpNoThrow(
-                    AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    Process.myUid(),
-                    context.packageName,
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                appOps.checkOpNoThrow(
-                    AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    Process.myUid(),
-                    context.packageName,
-                )
-            }
-            mode == AppOpsManager.MODE_ALLOWED
-        } catch (_: Exception) {
-            false
-        }
+        val appOps = context.getSystemService(AppOpsManager::class.java) ?: return false
+        return appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(),
+            context.packageName,
+        ) == AppOpsManager.MODE_ALLOWED
     }
 
     /**
@@ -87,23 +78,26 @@ object SuggestedAppsProvider {
      */
     fun loadSnapshot(
         context: Context,
-        allApps: AllAppsList,
+        apps: List<AppInfo>,
         limit: Int,
         nowMs: Long = System.currentTimeMillis(),
     ): AppSuggestions {
         if (limit <= 0) return AppSuggestions.EMPTY
 
-        val prefs2 = PreferenceManager2.getInstance(context)
-        val hiddenApps = prefs2.hiddenApps.firstBlocking()
-        val hiddenAppsInSearch = prefs2.hiddenAppsInSearch.firstBlocking()
+        // Hidden apps never appear here, whatever "show hidden apps in search" says: that setting
+        // is about matching a typed query, and nothing has been typed yet.
+        val hiddenApps = PreferenceManager2.getInstance(context).hiddenApps.firstCached()
         val ownPackage = context.packageName
         val currentUser = Process.myUserHandle()
 
         // One AppInfo per package for the current user, with hidden apps and Lawnchair removed.
+        // The AppInfo objects still belong to the model. Of the fields read here, only the status
+        // flags can change meanwhile (an app being installed or updated), and a stale read only
+        // moves that app in or out of New until the next load.
         val byPackage = LinkedHashMap<String, AppInfo>()
-        allApps.data.asSequence()
+        apps.asSequence()
             .filter { it.user == currentUser }
-            .filterHiddenApps(query = "", hiddenApps = hiddenApps, hiddenAppsInSearch = hiddenAppsInSearch)
+            .filter { it.toComponentKey().toString() !in hiddenApps }
             .forEach { app ->
                 val pkg = app.componentName?.packageName ?: return@forEach
                 if (pkg == ownPackage) return@forEach
@@ -116,9 +110,12 @@ object SuggestedAppsProvider {
         } else {
             emptyList()
         }
-        val installs = byPackage.keys.map { pkg ->
-            AppSuggestionRanker.InstallInfo(pkg, firstInstallTime(context, pkg))
-        }
+        // Skip apps with an install session in progress (e.g. promise icons): they can't be opened yet.
+        val installTimes = firstInstallTimes(context)
+        val installs = byPackage
+            .filterValues { (it.runtimeStatusFlags and ItemInfoWithIcon.FLAG_INSTALL_SESSION_ACTIVE) == 0 }
+            .keys
+            .mapNotNull { pkg -> installTimes[pkg]?.let { AppSuggestionRanker.InstallInfo(pkg, it) } }
 
         fun keysToApps(keys: List<String>): List<AppInfo> = keys.mapNotNull { byPackage[it] }
 
@@ -147,9 +144,10 @@ object SuggestedAppsProvider {
         }
     }
 
-    private fun firstInstallTime(context: Context, pkg: String): Long = try {
-        context.packageManager.getPackageInfo(pkg, 0).firstInstallTime
+    /** First install time of every package installed for the current user, in one query. */
+    private fun firstInstallTimes(context: Context): Map<String, Long> = try {
+        context.packageManager.getInstalledPackages(0).associate { it.packageName to it.firstInstallTime }
     } catch (_: Exception) {
-        0L
+        emptyMap()
     }
 }

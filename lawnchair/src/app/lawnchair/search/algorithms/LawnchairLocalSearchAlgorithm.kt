@@ -1,6 +1,7 @@
 package app.lawnchair.search.algorithms
 
 import android.content.Context
+import app.lawnchair.launcherNullable
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
@@ -33,11 +34,11 @@ import app.lawnchair.search.algorithms.engine.provider.apps.AppSuggestions
 import app.lawnchair.search.algorithms.engine.provider.apps.SuggestedAppsProvider
 import app.lawnchair.search.algorithms.engine.provider.web.CustomWebSearchProvider
 import app.lawnchair.search.algorithms.engine.provider.web.WebSuggestionProvider
+import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
 import com.android.launcher3.allapps.BaseAllAppsAdapter
 import com.android.launcher3.search.SearchCallback
-import com.patrykmichalik.opto.core.firstBlocking
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
@@ -66,23 +67,34 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
      * Zero-state suggestion session: the selected tab plus a cached snapshot so switching tabs is
      * instant and doesn't re-query usage stats. Held as one atomic value because it is read and
      * written across the main thread, the model executor and IO coroutines. The snapshot is cleared
-     * when the search box loses focus or the app list changes; the tab choice persists.
+     * when the search box loses focus or the app list changes; the tab choice persists until usage
+     * access is granted, so Frequent becomes the default again once it has data.
+     * [usageGranted] is the usage access state of the last loaded snapshot and survives clearing it.
      */
     private data class SuggestionState(
         val selectedTab: SuggestionTab = SuggestionTab.FREQUENT,
         val userPickedTab: Boolean = false,
         val snapshot: AppSuggestions? = null,
+        val usageGranted: Boolean? = null,
     )
 
     private val suggestionState = AtomicReference(SuggestionState())
 
     /**
-     * Monotonic request token, bumped on every new zero-state request and on cancel. A stale model
-     * task or a late coroutine compares it before posting and skips if it has been superseded — the
-     * enqueued model task itself is not cancellable mid-flight, so this is what makes cancellation
-     * effective and stops a stale zero-state result from painting over a live query.
+     * Monotonic request token, bumped on every new request and on cancel. Cancelling
+     * [modelRetryJob] only stops a model task that hasn't started yet, so a task that is already
+     * running can still start a new [currentJob] afterwards. Every request captures the token and
+     * checks it before posting, so a superseded zero-state or typed search never paints over the
+     * newer one.
      */
     private val requestSeq = AtomicInteger(0)
+
+    /**
+     * Whether the suggestion tabs on screen were loaded without usage access, i.e. they show the
+     * prompt to turn it on. Tracked apart from the snapshot, which is cleared on blur and on app
+     * list changes while the tabs can stay on screen. Main thread only.
+     */
+    private var usagePromptShowing = false
 
     private val searchProviders: List<SearchProvider> = listOf(
         SettingsSearchProvider,
@@ -92,8 +104,12 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
     )
 
     override fun doSearch(query: String, callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
+        // Take a new token so a pending zero-state request can't post over these results, and so
+        // this search can tell whether it has been superseded by the time its results are ready.
+        val token = requestSeq.incrementAndGet()
         modelRetryJob?.cancel()
         modelRetryJob = appState.model.runWhenModelLoaded(coroutineScope) { apps ->
+            if (token != requestSeq.get()) return@runWhenModelLoaded
             val appResults = appSearchProvider.search(context, query, apps)
             val shortcutResults = shortcutSearchProvider.search(context, appResults)
 
@@ -123,7 +139,10 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
                     setFirstItemQuickLaunch(searchTargets)
                     val adapterItems = transformSearchResults(searchTargets)
                     withContext(Dispatchers.Main) {
-                        callback.onSearchResult(query, ArrayList(adapterItems))
+                        if (token == requestSeq.get()) {
+                            usagePromptShowing = false
+                            callback.onSearchResult(query, ArrayList(adapterItems))
+                        }
                     }
                 }
             }
@@ -135,8 +154,15 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         currentJob?.cancel()
         val token = requestSeq.incrementAndGet()
 
-        val prefs2 = PreferenceManager2.getInstance(context)
-        val suggestionsEnabled = prefs2.showSuggestedAppsInSearch.firstBlocking()
+        val prefs = PreferenceManager.getInstance(context)
+        val historyEnabled = prefs.searchResulRecentSuggestion.get()
+        val suggestionsEnabled = PreferenceManager2.getInstance(context).showSuggestedAppsInSearch.firstCached()
+
+        if (!suggestionsEnabled && !historyEnabled) {
+            usagePromptShowing = false
+            callback.clearSearchResult()
+            return
+        }
 
         if (!suggestionsEnabled) {
             currentJob = coroutineScope.launch {
@@ -154,16 +180,33 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
             return
         }
 
-        appState.model.enqueueModelUpdateTask { _, _, apps ->
-            if (token != requestSeq.get()) return@enqueueModelUpdateTask
-            val columns = LauncherAppState.getIDP(context).numAllAppsColumns
-            val limit = (columns * 2).coerceAtLeast(1)
-            val snapshot = SuggestedAppsProvider.loadSnapshot(context, apps, limit)
-            val updated = suggestionState.updateAndGet { current ->
-                current.copy(snapshot = snapshot, selectedTab = resolveTab(current, snapshot))
-            }
-            if (token != requestSeq.get()) return@enqueueModelUpdateTask
+        // Two full rows of the search grid, which uses the device profile's shown column count.
+        val columns = context.launcherNullable?.deviceProfile?.numShownAllAppsColumns
+            ?: InvariantDeviceProfile.INSTANCE.get(context).numAllAppsColumns
+        val limit = (columns * 2).coerceAtLeast(1)
+
+        modelRetryJob = appState.model.runWhenModelLoaded(coroutineScope) { apps ->
+            if (token != requestSeq.get()) return@runWhenModelLoaded
+            // AllAppsList may only be read on the model thread. Copy it here and do the slower
+            // usage-stats and package-manager queries on IO, so the model thread isn't held up.
+            val appsCopy = apps.data.toList()
+            currentJob?.cancel()
             currentJob = coroutineScope.launch {
+                val snapshot = SuggestedAppsProvider.loadSnapshot(context, appsCopy, limit)
+                if (token != requestSeq.get()) return@launch
+                val updated = suggestionState.updateAndGet { current ->
+                    // A tab picked before usage access was granted no longer overrides the default.
+                    val base = if (current.usageGranted == false && snapshot.usageGranted) {
+                        current.copy(userPickedTab = false)
+                    } else {
+                        current
+                    }
+                    base.copy(
+                        snapshot = snapshot,
+                        usageGranted = snapshot.usageGranted,
+                        selectedTab = resolveTab(base, snapshot),
+                    )
+                }
                 postZeroState(token, snapshot, updated.selectedTab, callback)
             }
         }
@@ -177,11 +220,12 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
     }
 
     override fun selectSuggestionTab(tab: SuggestionTab, callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
-        currentJob?.cancel()
-        val token = requestSeq.incrementAndGet()
         val updated = suggestionState.updateAndGet { it.copy(selectedTab = tab, userPickedTab = true) }
         val snapshot = updated.snapshot
         if (snapshot != null) {
+            modelRetryJob?.cancel()
+            currentJob?.cancel()
+            val token = requestSeq.incrementAndGet()
             currentJob = coroutineScope.launch {
                 postZeroState(token, snapshot, tab, callback)
             }
@@ -192,6 +236,14 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
 
     override fun invalidateSuggestionCache() {
         suggestionState.updateAndGet { it.copy(snapshot = null) }
+    }
+
+    override fun refreshSuggestionsIfStale(callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
+        // The tabs on screen were loaded without usage access; reload them if it has been granted
+        // since (e.g. the user just came back from the usage access settings page).
+        if (!usagePromptShowing || !SuggestedAppsProvider.hasUsageAccess(context)) return
+        invalidateSuggestionCache()
+        doZeroStateSearch(callback)
     }
 
     private suspend fun postZeroState(
@@ -206,16 +258,15 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
 
         val results = mutableListOf<SearchResult>()
 
-        val showTabs = suggestions != null && suggestions.hasAny
-        if (showTabs) {
-            results.add(SearchResult.Action.SuggestionTabs(selectedTab, suggestions!!.usageGranted))
-            suggestions.appsFor(selectedTab).forEach {
-                results.add(SearchResult.SuggestedApp(it, selectedTab))
-            }
+        val tabs = suggestions?.takeIf { it.shouldShowTabs }
+        if (tabs != null) {
+            val apps = tabs.appsFor(selectedTab)
+            results.add(SearchResult.Action.SuggestionTabs(selectedTab, tabs.usageGranted, apps.isEmpty()))
+            apps.forEach { results.add(SearchResult.SuggestedApp(it, selectedTab)) }
         }
 
         if (historyEnabled) {
-            val maxHistory = prefs2.maxRecentResultCount.firstBlocking()
+            val maxHistory = prefs2.maxRecentResultCount.firstCached()
             results.addAll(historySearchProvider.getRecentKeywords(context, maxHistory))
         }
 
@@ -237,9 +288,12 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         }
 
         if (results.isEmpty()) {
-            // Nothing to show (suggestions and history both off / empty).
+            // Nothing to show (history off and no suggestions).
             withContext(Dispatchers.Main) {
-                if (token == requestSeq.get()) callback.clearSearchResult()
+                if (token == requestSeq.get()) {
+                    usagePromptShowing = false
+                    callback.clearSearchResult()
+                }
             }
             return
         }
@@ -247,12 +301,17 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         val searchTargets = translateToSearchTargets(results)
         val adapterItems = transformSearchResults(searchTargets)
         withContext(Dispatchers.Main) {
-            if (token == requestSeq.get()) callback.onSearchResult("", ArrayList(adapterItems))
+            if (token == requestSeq.get()) {
+                usagePromptShowing = tabs != null && !tabs.usageGranted
+                callback.onSearchResult("", ArrayList(adapterItems))
+            }
         }
     }
 
     override fun cancel(interruptActiveRequests: Boolean) {
         requestSeq.incrementAndGet()
+        usagePromptShowing = false
+        modelRetryJob?.cancel()
         currentJob?.cancel()
     }
 

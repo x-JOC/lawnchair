@@ -10,11 +10,18 @@ import app.lawnchair.search.algorithms.data.SettingInfo
 import com.android.launcher3.model.data.AppInfo
 
 /**
+ * The three zero-state suggestion categories shown as switchable tabs in the
+ * empty app-drawer search: most-used, recently-used and newly installed apps.
+ */
+enum class SuggestionTab { FREQUENT, RECENT, NEW }
+
+/**
  * A clean, type-safe, internal representation of any possible search result.
  * This is the "domain model" for the search engine. It has no knowledge of the UI.
  */
 sealed interface SearchResult {
     data class App(val data: AppInfo) : SearchResult
+    data class SuggestedApp(val data: AppInfo, val tab: SuggestionTab) : SearchResult
     data class Contact(val data: ContactInfo) : SearchResult
     data class File(val data: IFileInfo) : SearchResult
     data class Setting(val data: SettingInfo) : SearchResult
@@ -36,5 +43,17 @@ sealed interface SearchResult {
             @StringRes val subtitleRes: Int,
         ) : Action
         data object SearchSettings : Action
+
+        /**
+         * The header control for the zero-state app suggestions. Carries the currently
+         * selected tab, whether usage access has been granted (so the view can show a
+         * "turn on usage access" prompt when it hasn't) and whether the selected tab has
+         * no apps (so the view can explain the empty tab).
+         */
+        data class SuggestionTabs(
+            val selected: SuggestionTab,
+            val usageGranted: Boolean,
+            val selectedEmpty: Boolean,
+        ) : Action
     }
 }

@@ -958,6 +958,16 @@
 
     <string name="show_suggested_apps_at_drawer_top">Show suggested apps at the top of the drawer</string>
 
+    <string name="search_suggested_frequent_title">Frequent</string>
+    <string name="search_suggested_recent_title">Recent</string>
+    <string name="search_suggested_new_title">New</string>
+    <string name="search_pref_suggested_apps_title">Suggestion tabs in search</string>
+    <string name="search_pref_suggested_apps_description">Show your most used, recently opened, and newly installed apps when the search box is empty</string>
+    <string name="search_suggested_empty_usage">No app usage in the last 30 days</string>
+    <string name="search_suggested_empty_new">No apps installed in the last 30 days</string>
+    <!-- Accessibility role read out for each of the suggestion tabs, e.g. "Recent, selected, Tab". -->
+    <string name="search_suggested_tab_role">Tab</string>
+
     <string name="perform_wide_search_title">Device search</string>
     <string name="perform_wide_search_description">Search your phone contacts, files, and settings</string>
 

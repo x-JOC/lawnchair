@@ -8,10 +8,12 @@ import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.search.LawnchairSearchAdapterProvider
 import app.lawnchair.search.adapter.START_PAGE
+import app.lawnchair.search.adapter.SUGGESTION_TABS
 import app.lawnchair.search.adapter.SearchAdapterItem
 import app.lawnchair.search.adapter.SearchTargetCompat
 import app.lawnchair.search.adapter.SearchTargetCompat.Companion.RESULT_TYPE_APPLICATION
 import app.lawnchair.search.adapter.SearchTargetCompat.Companion.RESULT_TYPE_SHORTCUT
+import app.lawnchair.search.algorithms.engine.SuggestionTab
 import com.android.app.search.LayoutType.CALCULATOR
 import com.android.app.search.LayoutType.EDUCARD
 import com.android.app.search.LayoutType.EMPTY_DIVIDER
@@ -193,6 +195,8 @@ sealed class LawnchairSearchAlgorithm(
 
         layoutType == SEARCH_SETTINGS -> transparentBackground
 
+        layoutType == SUGGESTION_TABS -> transparentBackground
+
         //        layoutType == PLAY_PLACEHOLDER -> transparentBackground
 //        layoutType == EDUCARD -> transparentBackground
         isFirst && isLast -> normalBackground
@@ -214,6 +218,22 @@ sealed class LawnchairSearchAlgorithm(
     open fun doZeroStateSearch(callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
         // Default implementation is to clear results.
         callback.clearSearchResult()
+    }
+
+    open fun selectSuggestionTab(tab: SuggestionTab, callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
+        // Only the local search algorithm shows zero-state suggestion tabs.
+    }
+
+    open fun invalidateSuggestionCache() {
+        // Only the local search algorithm caches zero-state suggestions.
+    }
+
+    /**
+     * Reloads the zero-state suggestions if they are on screen and out of date, e.g. after the
+     * user turned on usage access and came back to the launcher.
+     */
+    open fun refreshSuggestionsIfStale(callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
+        // Only the local search algorithm shows zero-state suggestion tabs.
     }
 
     companion object {

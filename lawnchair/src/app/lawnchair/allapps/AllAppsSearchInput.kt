@@ -35,6 +35,8 @@ import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.launcher
 import app.lawnchair.preferences.PreferenceManager
@@ -53,6 +55,7 @@ import app.lawnchair.qsb.providers.PixelSearch
 import app.lawnchair.qsb.rememberAllAppsQsbState
 import app.lawnchair.search.LawnchairRecentSuggestionProvider
 import app.lawnchair.search.algorithms.LawnchairSearchAlgorithm
+import app.lawnchair.search.algorithms.engine.SuggestionTab
 import app.lawnchair.theme.color.tokens.ColorTokens
 import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.util.ProvideLifecycleState
@@ -119,6 +122,13 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     private var initialPaddingLeft: Int = 0
     private var initialPaddingRight: Int = 0
     private var hideSearchBar = false
+
+    private val launcherResumeObserver = object : DefaultLifecycleObserver {
+        override fun onResume(owner: LifecycleOwner) {
+            // Pick up usage access granted in Settings while the suggestion tabs were showing.
+            searchAlgorithm?.refreshSuggestionsIfStale(this@AllAppsSearchInput)
+        }
+    }
 
     override fun onFinishInflate() {
         super.onFinishInflate()
@@ -302,6 +312,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                 focusedResultTitle = ""
                 input.setHint("")
                 hint.text = ""
+                searchAlgorithm?.invalidateSuggestionCache()
             }
 
             if (::appsView.isInitialized) {
@@ -425,6 +436,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             appsView.appsStore?.addUpdateListener(this)
         }
         input.viewTreeObserver.addOnGlobalLayoutListener(this)
+        launcher.lifecycle.addObserver(launcherResumeObserver)
     }
 
     override fun onDetachedFromWindow() {
@@ -434,11 +446,17 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             appsView.appsStore?.removeUpdateListener(this)
         }
         input.viewTreeObserver.removeOnGlobalLayoutListener(this)
+        launcher.lifecycle.removeObserver(launcherResumeObserver)
         setDirectFocus(false)
     }
 
     override fun onAppsUpdated() {
+        searchAlgorithm?.invalidateSuggestionCache()
         searchBarController.refreshSearchResult()
+    }
+
+    fun selectSuggestionTab(tab: SuggestionTab) {
+        searchAlgorithm?.selectSuggestionTab(tab, this)
     }
 
     override fun initializeSearch(appsView: ActivityAllAppsContainerView<*>) {

@@ -28,6 +28,7 @@ import app.lawnchair.search.algorithms.data.FolderInfo
 import app.lawnchair.search.algorithms.data.IFileInfo
 import app.lawnchair.search.algorithms.data.RecentKeyword
 import app.lawnchair.search.algorithms.data.SettingInfo
+import app.lawnchair.search.algorithms.engine.SuggestionTab
 import app.lawnchair.search.algorithms.engine.provider.web.WebSearchProvider
 import app.lawnchair.theme.color.tokens.ColorTokens
 import app.lawnchair.util.calculateInSampleSize
@@ -346,6 +347,36 @@ class SearchTargetFactory(
         }.build()
     }
 
+    fun createSuggestionTabsTarget(
+        selected: SuggestionTab,
+        usageGranted: Boolean,
+        selectedEmpty: Boolean,
+    ): SearchTargetCompat {
+        val id = "suggestion_tabs"
+
+        // The action doesn't do anything, the view handles tab clicks itself.
+        val action = SearchActionCompat.Builder(id, "")
+            .setIntent(Intent())
+            .build()
+
+        return SearchTargetCompat.Builder(
+            SearchTargetCompat.RESULT_TYPE_SECTION_HEADER,
+            SUGGESTION_TABS,
+            id,
+        ).apply {
+            setPackageName(SUGGESTION_TABS)
+            setUserHandle(Process.myUserHandle())
+            setSearchAction(action)
+            setExtras(
+                bundleOf(
+                    "selected" to selected.ordinal,
+                    "usageGranted" to usageGranted,
+                    "selectedEmpty" to selectedEmpty,
+                ),
+            )
+        }.build()
+    }
+
     fun createSearchSettingsTarget(): SearchTargetCompat {
         val id = "action:search_settings"
 
@@ -563,3 +594,4 @@ const val HISTORY = "recent_keyword"
 const val CALCULATOR = "calculator"
 const val EMPTY_STATE = "empty_state"
 const val SEARCH_SETTINGS = "search_settings"
+const val SUGGESTION_TABS = "suggestion_tabs"

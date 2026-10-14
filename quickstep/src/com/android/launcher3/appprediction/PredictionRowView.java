@@ -31,7 +31,7 @@ import android.widget.LinearLayout;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView;
+import app.lawnchair.allapps.suggestions.HiddenBySuggestionTabs;
 import app.lawnchair.preferences2.PreferenceManager2;
 import com.android.launcher3.BubbleTextView;
 import com.android.launcher3.DeviceProfile;
@@ -56,7 +56,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class PredictionRowView<T extends Context & ActivityContext>
-        extends LinearLayout implements OnDeviceProfileChangeListener, FloatingHeaderRow {
+        extends LinearLayout implements OnDeviceProfileChangeListener, FloatingHeaderRow,
+        HiddenBySuggestionTabs {
 
     private final T mActivityContext;
     private int mNumPredictedAppsPerRow;
@@ -75,6 +76,7 @@ public class PredictionRowView<T extends Context & ActivityContext>
     private FloatingHeaderView mParent;
 
     private boolean mPredictionsEnabled = false;
+    private boolean mHiddenBySuggestionTabs = false;
 
     private boolean mPredictionUiUpdatePaused = false;
 
@@ -122,12 +124,22 @@ public class PredictionRowView<T extends Context & ActivityContext>
         mParent = parent;
     }
 
+    // LC-Note: the drawer's suggestion tabs take this row's place while they show.
+    @Override
+    public boolean setHiddenBySuggestionTabs(boolean hidden) {
+        if (mHiddenBySuggestionTabs == hidden) {
+            return false;
+        }
+        mHiddenBySuggestionTabs = hidden;
+        boolean wasGone = getVisibility() == GONE;
+        updateVisibility();
+        return wasGone != (getVisibility() == GONE);
+    }
+
     private void updateVisibility() {
-        // LC-Note: the drawer's suggestion tabs (AppSuggestionsHeaderView) take this row's place
-        // while they are on.
         boolean enabled = mPredictionsEnabled
                 && PreferenceCacheExtensionsKt.firstCached(prefs2.getShowSuggestedAppsInDrawer())
-                && !AppSuggestionsHeaderView.isEnabledFor(getContext());
+                && !mHiddenBySuggestionTabs;
         setVisibility(enabled ? VISIBLE : GONE);
         if (mActivityContext.getAppsView() != null) {
             if (enabled) {

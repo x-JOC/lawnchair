@@ -55,10 +55,13 @@ import kotlinx.coroutines.launch
  * a row of three tabs over up to two rows of the drawer's own icons. The A-Z list continues below,
  * after the usual divider.
  *
- * This is a [FloatingHeaderRow], like the suggested apps row it replaces while it is on, so it
- * scrolls away with the list, hides while search results are shown and sits above the
- * Personal/Work tabs. It only shows in the launcher's own drawer: in the taskbar and on other
- * displays it stays gone.
+ * It only shows during a search session ([setSearchSessionActive]): from a tap on the search box
+ * until the user leaves search. The drawer opens as usual, with the suggested apps row if that is
+ * on; while the tabs show, they take that row's place ([HiddenBySuggestionTabs]).
+ *
+ * This is a [FloatingHeaderRow], like the suggested apps row, so it scrolls away with the list,
+ * hides while search results are shown and sits above the Personal/Work tabs. It only shows in the
+ * launcher's own drawer: in the taskbar and on other displays it stays gone.
  *
  * The header keeps one height for all tabs (enough rows for the fullest tab), so switching tabs
  * never moves the list. When every tab is empty it only has room for a one-line message. A new
@@ -110,6 +113,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
      */
     private var resizeOnNextLoad = false
 
+    /** Whether the search box is in use, see [setSearchSessionActive]. */
+    private var searchSessionActive = false
+
     private var uiPaused = false
     private val resumeUiUpdates = Runnable { setUiUpdatesPaused(false) }
     private var selectedTab = lastPickedTab ?: SuggestionTab.FREQUENT
@@ -124,6 +130,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         emptyText = ViewCompat.requireViewById(this, R.id.suggestion_empty)
         FontManager.INSTANCE.get(context).setCustomFont(emptyText, R.id.font_body)
         tabBar.onTabPicked = ::onTabPicked
+        if (featureOn) tabBar.indicatorStyle = PreferenceManager2.getInstance(context).drawerSuggestionTabIndicator.firstCached()
     }
 
     // FloatingHeaderRow
@@ -181,7 +188,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         launcher.stateManager.addStateListener(stateListener)
         launcher.lifecycle.addObserver(lifecycleObserver)
         AppLaunchStore.getInstance(context).revisionFlow.drop(1).onEach { refresh() }.launchIn(newScope)
-        PreferenceManager2.getInstance(context).hiddenApps.get().drop(1).onEach { refresh() }.launchIn(newScope)
+        val prefs = PreferenceManager2.getInstance(context)
+        prefs.hiddenApps.get().drop(1).onEach { refresh() }.launchIn(newScope)
+        prefs.drawerSuggestionTabIndicator.get().onEach { tabBar.indicatorStyle = it }.launchIn(newScope)
         applyColors()
         refresh()
     }
@@ -245,6 +254,24 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         uiPaused = false
     }
 
+    /**
+     * Shows the header while the search box is in use: from the tap on the empty box (the drawer
+     * stays, with the keyboard up), through typing (search results cover the header) until the
+     * user leaves search. Called by the search box when it gains or loses focus, and ended here
+     * when the drawer closes. The header height changes then, which the drawer applies by
+     * scrolling its list to the top, as entering or leaving search does anyway.
+     */
+    fun setSearchSessionActive(active: Boolean) {
+        if (!featureOn || searchSessionActive == active) return
+        searchSessionActive = active
+        if (active) {
+            showLatest(allowHeightChange = true)
+            refresh()
+        } else {
+            updateShown()
+        }
+    }
+
     // Data
 
     /**
@@ -284,25 +311,45 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
      * screen or just starting to open.
      */
     private fun showLatest(allowHeightChange: Boolean) {
-        val snapshot = latest ?: return
-        val dp = launcher?.deviceProfile ?: return
-        if (uiPaused) return
-        if (allowHeightChange) {
-            reservedRows = snapshot.rowsNeeded(dp.numShownAllAppsColumns, maxRows(dp))
-            sized = true
-            // Until the user picks a tab, open on Frequent, or on the first tab with apps. Not
-            // while the drawer is on screen, so the tab doesn't change under the user.
-            if (lastPickedTab == null) selectedTab = snapshot.firstNonEmptyTab(SuggestionTab.FREQUENT)
+        val snapshot = latest
+        val dp = launcher?.deviceProfile
+        if (snapshot != null && dp != null && !uiPaused) {
+            if (allowHeightChange) {
+                reservedRows = snapshot.rowsNeeded(dp.numShownAllAppsColumns, maxRows(dp))
+                sized = true
+                // Until the user picks a tab, open on Frequent, or on the first tab with apps. Not
+                // while the drawer is on screen, so the tab doesn't change under the user.
+                if (lastPickedTab == null) selectedTab = snapshot.firstNonEmptyTab(SuggestionTab.FREQUENT)
+            }
+            if (sized) bindSelectedTab(animate = false)
         }
-        if (!sized) return
-        if (visibility == GONE) visibility = VISIBLE
-        bindSelectedTab(animate = false)
+        updateShown()
+    }
+
+    /**
+     * Shows the header during a search session once it has suggestions, hides the rows it takes
+     * the place of meanwhile, and reports a new height to the drawer.
+     */
+    private fun updateShown() {
+        val shown = featureOn && sized && searchSessionActive
+        if (!shown) {
+            visibility = GONE
+        } else if (visibility == GONE) {
+            // Not over INVISIBLE, which is how a header scrolled out of view is hidden.
+            visibility = VISIBLE
+        }
+        val floatingHeader = header ?: parent as? FloatingHeaderView ?: return
+        var rowsChanged = false
+        for (i in 0 until floatingHeader.childCount) {
+            val row = floatingHeader.getChildAt(i) as? HiddenBySuggestionTabs ?: continue
+            rowsChanged = row.setHiddenBySuggestionTabs(shown) || rowsChanged
+        }
         val height = getExpectedHeight()
-        if (height != reportedHeight) {
+        if (height != reportedHeight || rowsChanged) {
             reportedHeight = height
             requestLayout()
             // Updates the list padding and the divider below, and scrolls the lists to the top.
-            (header ?: parent as? FloatingHeaderView)?.onHeightUpdated()
+            floatingHeader.onHeightUpdated()
         }
     }
 
@@ -357,7 +404,8 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     /**
      * The selected tab uses the colors of Lawnchair's selected chips ([PILL_COLOR] and
-     * [SELECTED_LABEL_COLOR]), which follow the wallpaper or the custom accent color. The other
+     * [SELECTED_LABEL_COLOR], also used for the line indicator), which follow the wallpaper or the
+     * custom accent color. The other
      * labels and the empty-tab message use the color of the drawer's icon labels, including the
      * alternate color on light or see-through drawers, so they match custom drawer colors.
      */
@@ -366,10 +414,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
             context,
             if (shouldUseAlternateAllAppsTextColor(context)) R.attr.allAppsAlternateTextColor else android.R.attr.textColorSecondary,
         )
+        val selectedColor = SELECTED_LABEL_COLOR.resolveColor(context)
         tabBar.applyColors(
-            selectedTextColor = SELECTED_LABEL_COLOR.resolveColor(context),
+            selectedTextColor = selectedColor,
             unselectedTextColor = labelColor,
             pillColor = PILL_COLOR.resolveColor(context),
+            lineColor = selectedColor,
             rippleColor = Themes.getAttrColor(context, android.R.attr.colorControlHighlight),
         )
         emptyText.setTextColor(
@@ -407,7 +457,11 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         }
 
         override fun onStateTransitionComplete(finalState: LauncherState) {
-            if (finalState != LauncherState.ALL_APPS) showLatest(allowHeightChange = true)
+            if (finalState != LauncherState.ALL_APPS) {
+                // Also ends a session that the search box kept after losing focus to a scroll.
+                searchSessionActive = false
+                showLatest(allowHeightChange = true)
+            }
         }
     }
 
@@ -446,7 +500,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
          * Whether the suggestion tabs are shown in the drawer of [context]: only in Lawnchair's own
          * launcher, and only while the setting is on and the drawer has its search bar. Without the
          * search bar and a work profile, the drawer hides its whole header, so the tabs would have
-         * no place; the settings say so. The suggested apps row hides itself while the tabs show.
+         * no place; the settings say so.
          */
         @JvmStatic
         fun isEnabledFor(context: Context): Boolean {
@@ -479,6 +533,15 @@ internal fun Context.findLawnchairLauncher(): LawnchairLauncher? {
         current = current.baseContext
     }
     return null
+}
+
+/**
+ * A drawer header row that [AppSuggestionsHeaderView] takes the place of while it shows, such as
+ * the suggested apps row, so the same apps don't show twice.
+ */
+interface HiddenBySuggestionTabs {
+    /** Hides or shows the row again. Returns whether its visibility changed. */
+    fun setHiddenBySuggestionTabs(hidden: Boolean): Boolean
 }
 
 /**

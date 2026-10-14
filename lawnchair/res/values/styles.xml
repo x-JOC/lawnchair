@@ -256,7 +256,7 @@
         <item name="android:paddingEnd">@dimen/drawer_suggestions_empty_padding_horizontal</item>
         <item name="android:maxLines">2</item>
         <item name="android:ellipsize">end</item>
-        <item name="android:textSize">14sp</item>
+        <item name="android:textSize">13sp</item>
         <item name="customFontType">@id/font_body</item>
     </style>
 </resources>

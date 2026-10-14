@@ -140,10 +140,14 @@
     <dimen name="drawer_suggestions_pill_padding_horizontal">14dp</dimen>
     <dimen name="drawer_suggestions_pill_min_width">48dp</dimen>
     <dimen name="drawer_suggestions_pill_min_gap">8dp</dimen>
+    <!-- The line under the selected tab (the default indicator): as wide as the label, at least
+         the min width, at the bottom of the area the pill would take. -->
+    <dimen name="drawer_suggestions_line_height">3dp</dimen>
+    <dimen name="drawer_suggestions_line_min_width">24dp</dimen>
     <dimen name="drawer_suggestions_tab_text_size_max">14sp</dimen>
     <dimen name="drawer_suggestions_tab_text_size_min">11sp</dimen>
     <dimen name="drawer_suggestions_empty_padding_horizontal">24dp</dimen>
     <!-- Room for the empty-tab message when every tab is empty, instead of a row of icons. -->
-    <dimen name="drawer_suggestions_empty_height">56dp</dimen>
+    <dimen name="drawer_suggestions_empty_height">44dp</dimen>
 
 </resources>

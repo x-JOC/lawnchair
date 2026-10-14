@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import app.lawnchair.allapps.suggestions.SuggestionTabIndicator
 import app.lawnchair.preferences.PreferenceAdapter
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences.preferenceManager
@@ -43,6 +44,8 @@ import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.AppDrawerHapticFeedbackPreference
 import app.lawnchair.ui.preferences.components.NavigationActionPreference
 import app.lawnchair.ui.preferences.components.colorpreference.ColorPreference
+import app.lawnchair.ui.preferences.components.controls.ListPreference
+import app.lawnchair.ui.preferences.components.controls.ListPreferenceEntry
 import app.lawnchair.ui.preferences.components.controls.SliderPreference
 import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.controls.SwitchPreferenceWithPreview
@@ -96,8 +99,6 @@ fun AppDrawerPreferences(
             NavigationActionPreference(
                 label = stringResource(R.string.suggestion_pref_screen_title),
                 destination = Predictions,
-                // The suggestions still apply elsewhere, such as the taskbar's app drawer.
-                subtitle = if (suggestionTabsOn) stringResource(R.string.drawer_suggestion_tabs_replace_suggestions) else null,
             )
             SwitchPreference(
                 checked = suggestionTabsOn,
@@ -108,6 +109,22 @@ fun AppDrawerPreferences(
                 ),
                 enabled = !searchBarHidden,
             )
+            ExpandAndShrink(visible = suggestionTabsOn) {
+                ListPreference(
+                    adapter = prefs2.drawerSuggestionTabIndicator.getAdapter(),
+                    entries = SuggestionTabIndicator.entries.map { style ->
+                        ListPreferenceEntry(style) {
+                            stringResource(
+                                when (style) {
+                                    SuggestionTabIndicator.LINE -> R.string.drawer_suggestion_tab_indicator_line
+                                    SuggestionTabIndicator.PILL -> R.string.drawer_suggestion_tab_indicator_pill
+                                },
+                            )
+                        }
+                    },
+                    label = stringResource(R.string.drawer_suggestion_tab_indicator_title),
+                )
+            }
             AppDrawerHapticFeedbackPreference()
         }
         PreferenceGroup(heading = stringResource(R.string.style)) {

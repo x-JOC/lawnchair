@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Copyright 2026, Lawnchair
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<!-- LC-Note: overrides quickstep/res/layout/floating_header_content.xml to add the suggestion
+     tabs between the suggested apps row and the divider. Keep the upstream rows in sync. -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <com.android.launcher3.appprediction.PredictionRowView
+        android:id="@+id/prediction_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:importantForAccessibility="yes" />
+
+    <!-- Frequent / Recent / New or updated apps. Takes the suggested apps row's place while it is
+         on, and stays gone outside the launcher's own drawer (taskbar, secondary displays). -->
+    <app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView
+        android:id="@+id/app_suggestions_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:importantForAccessibility="yes"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <app.lawnchair.allapps.suggestions.SuggestionTabBar
+            android:id="@+id/suggestion_tab_bar"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/drawer_suggestions_tab_bar_height"
+            android:importantForAccessibility="yes"
+            android:orientation="horizontal">
+
+            <!-- Same order as SuggestionTab.entries. RTL mirrors it. -->
+            <TextView
+                android:id="@+id/suggestion_tab_frequent"
+                style="@style/DrawerSuggestionTab"
+                android:text="@string/drawer_suggestions_tab_frequent" />
+
+            <TextView
+                android:id="@+id/suggestion_tab_recent"
+                style="@style/DrawerSuggestionTab"
+                android:text="@string/drawer_suggestions_tab_recent" />
+
+            <TextView
+                android:id="@+id/suggestion_tab_new"
+                style="@style/DrawerSuggestionTab"
+                android:text="@string/drawer_suggestions_tab_new" />
+        </app.lawnchair.allapps.suggestions.SuggestionTabBar>
+
+        <!-- Fills the rest of the header, which is measured to exactly rows × cell height. -->
+        <FrameLayout
+            android:id="@+id/suggestion_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <app.lawnchair.allapps.suggestions.SuggestionIconGrid
+                android:id="@+id/suggestion_grid"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/suggestion_empty"
+                style="@style/DrawerSuggestionEmptyText"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+        </FrameLayout>
+    </app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView>
+
+    <com.android.launcher3.appprediction.AppsDividerView
+        android:id="@+id/apps_divider_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+</merge>

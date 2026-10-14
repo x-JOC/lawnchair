@@ -148,11 +148,20 @@ fun supportsRoundedCornersOnWindows(context: Context): Boolean {
     }
 }
 
-fun overrideAllAppsTextColor(textView: TextView) {
-    val context = textView.context
+/**
+ * Whether text in the app drawer uses [R.attr.allAppsAlternateTextColor] instead of the theme's
+ * text color, because the drawer background is light or mostly see-through. Icon labels and the
+ * drawer's suggestion tabs follow the same rule.
+ */
+fun shouldUseAlternateAllAppsTextColor(context: Context): Boolean {
     val luminance = getAllAppsBaseColor(context, ColorTokens.AllAppsScrimColor.resolveColor(context)).luminance
     val opacity = PreferenceManager.getInstance(context).drawerOpacity.get()
-    if (luminance > 0.5f || opacity <= 0.3f) {
+    return luminance > 0.5f || opacity <= 0.3f
+}
+
+fun overrideAllAppsTextColor(textView: TextView) {
+    val context = textView.context
+    if (shouldUseAlternateAllAppsTextColor(context)) {
         textView.setTextColor(Themes.getAttrColor(context, R.attr.allAppsAlternateTextColor))
     }
 }

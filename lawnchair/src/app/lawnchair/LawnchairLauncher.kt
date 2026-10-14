@@ -32,6 +32,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.LawnchairApp.Companion.showQuickstepWarningIfNecessary
+import app.lawnchair.allapps.suggestions.AppLaunchStore
+import app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView
 import app.lawnchair.compat.LawnchairQuickstepCompat
 import app.lawnchair.data.AppDatabase
 import app.lawnchair.data.wallpaper.service.WallpaperService
@@ -45,7 +47,6 @@ import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.root.RootHelperManager
 import app.lawnchair.root.RootNotAvailableException
-import app.lawnchair.search.algorithms.engine.provider.apps.AppLaunchStore
 import app.lawnchair.theme.ThemeProvider
 import app.lawnchair.ui.popup.LauncherOptionsPopup
 import app.lawnchair.ui.popup.LawnchairShortcut
@@ -427,6 +428,21 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         Utilities.allowBGLaunch(options)
         return ActivityOptionsWrapper(options, callbacks)
+    }
+
+    override fun startActivitySafely(v: View?, intent: Intent, item: ItemInfo?): RunnableList? {
+        // Like the suggested apps row: keep the drawer's suggestion tabs from changing the icon
+        // that is being launched until the launch animation is done.
+        val suggestions = appsView?.floatingHeaderView
+            ?.findFixedRowByType(AppSuggestionsHeaderView::class.java)
+        suggestions?.setUiUpdatesPaused(true)
+        val result = super.startActivitySafely(v, intent, item)
+        if (result == null) {
+            suggestions?.setUiUpdatesPaused(false)
+        } else {
+            result.add { suggestions?.setUiUpdatesPaused(false) }
+        }
+        return result
     }
 
     override fun logAppLaunch(statsLogManager: StatsLogManager?, info: ItemInfo?, instanceId: InstanceId?) {

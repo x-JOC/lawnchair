@@ -7,7 +7,6 @@ import android.view.ViewGroup
 import androidx.core.util.contains
 import app.lawnchair.allapps.views.SearchItemDecorator
 import app.lawnchair.allapps.views.SearchResultView
-import app.lawnchair.search.adapter.SUGGESTION_TABS
 import app.lawnchair.search.adapter.SearchAdapterItem
 import com.android.app.search.LayoutType
 import com.android.launcher3.DeviceProfile
@@ -38,7 +37,6 @@ class LawnchairSearchAdapterProvider(
         append(SEARCH_RESULT_CALCULATOR, R.layout.search_result_tall_icon_row_calculator)
         append(SEARCH_RESULT_EMPTY_STATE, R.layout.search_result_empty_state)
         append(SEARCH_RESULT_SEARCH_SETTINGS, R.layout.search_result_search_settings)
-        append(SEARCH_RESULT_SUGGESTION_TABS, R.layout.search_result_suggestion_tabs)
     }
     private var quickLaunchItem: SearchResultView? = null
         set(value) {
@@ -119,7 +117,6 @@ class LawnchairSearchAdapterProvider(
         private const val SEARCH_RESULT_CALCULATOR = 1 shl 20
         private const val SEARCH_RESULT_EMPTY_STATE = 1 shl 21
         private const val SEARCH_RESULT_SEARCH_SETTINGS = 1 shl 22
-        private const val SEARCH_RESULT_SUGGESTION_TABS = 1 shl 23
 
         val viewTypeMap = mapOf(
             LayoutType.ICON_SINGLE_VERTICAL_TEXT to SEARCH_RESULT_ICON,
@@ -135,7 +132,6 @@ class LawnchairSearchAdapterProvider(
             LayoutType.CALCULATOR to SEARCH_RESULT_CALCULATOR,
             LayoutType.EMPTY_STATE to SEARCH_RESULT_EMPTY_STATE,
             LayoutType.SEARCH_SETTINGS to SEARCH_RESULT_SEARCH_SETTINGS,
-            SUGGESTION_TABS to SEARCH_RESULT_SUGGESTION_TABS,
         )
     }
 }

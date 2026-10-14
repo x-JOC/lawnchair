@@ -1,11 +1,11 @@
-package app.lawnchair.search.algorithms.engine.provider.apps
+package app.lawnchair.allapps.suggestions
 
 import kotlin.math.pow
 
 /**
- * Ranking rules for the zero-state app suggestions (frequent / recent / new or updated). It has no Android
- * dependencies so it can be unit-tested on the JVM. The caller gathers the launch and install data
- * and maps the returned keys back to app entries.
+ * Ranking rules for the app drawer's suggestion tabs (frequent / recent / new or updated). It has
+ * no Android dependencies so it can be unit-tested on the JVM. The caller gathers the launch and
+ * install data and maps the returned keys back to app entries.
  */
 object AppSuggestionRanker {
 

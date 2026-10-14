@@ -1,4 +1,4 @@
-package app.lawnchair.search.algorithms.engine.provider.apps
+package app.lawnchair.allapps.suggestions
 
 import android.content.ComponentName
 import android.content.Context
@@ -8,9 +8,9 @@ import android.util.AtomicFile
 import android.util.Log
 import androidx.annotation.AnyThread
 import androidx.annotation.WorkerThread
+import app.lawnchair.allapps.suggestions.AppSuggestionRanker.LaunchInfo
 import app.lawnchair.predictions.LawnchairPredictionManager
 import app.lawnchair.predictions.PredictionAppKey
-import app.lawnchair.search.algorithms.engine.provider.apps.AppSuggestionRanker.LaunchInfo
 import app.lawnchair.util.SingletonHolder
 import com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APPLICATION
 import com.android.launcher3.model.data.ItemInfo
@@ -20,20 +20,24 @@ import com.android.launcher3.util.Executors.ORDERED_BG_EXECUTOR
 import java.io.File
 import java.io.FileNotFoundException
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Lawnchair's own record of app launches, which feeds the Frequent and Recent suggestion tabs in
- * drawer search. Counting launches inside the launcher (like Nova does) needs no permission, so the
- * tabs work even where Android blocks usage access for sideloaded apps.
+ * Lawnchair's own record of app launches, which feeds the Frequent and Recent suggestion tabs at
+ * the top of the app drawer. Counting launches inside the launcher (like Nova does) needs no
+ * permission, so the tabs work even where Android blocks usage access for sideloaded apps.
  *
  * Every app launched from the launcher (home screen, dock, folders, drawer, search, taskbar) is
  * recorded once per launch, keyed by its [ComponentKey]. Only apps of the current user are kept,
- * because the tabs only show those: work profile and private space launches are never written. The history is a small JSON file in the
- * app's files folder, capped at [MAX_ENTRIES] apps and [MAX_AGE_MS] since the last launch. Until
- * that file exists, it is seeded from the Lawnchair predictor's launch logs, if there are any.
+ * because the tabs only show those: work profile and private space launches are never written.
+ * The history is a small JSON file in the app's files folder, capped at [MAX_ENTRIES] apps and
+ * [MAX_AGE_MS] since the last launch. Until that file exists, it is seeded from the Lawnchair
+ * predictor's launch logs, if there are any.
  *
  * Launches are recorded on [ORDERED_BG_EXECUTOR] and written to disk shortly after, never on the
  * main thread. [getLaunches] reads the file on first use, so call it from a background thread.
@@ -53,13 +57,16 @@ class AppLaunchStore private constructor(private val context: Context) {
         save()
     }
 
-    private val revisionCounter = AtomicInteger(0)
+    private val revisionState = MutableStateFlow(0)
 
     /**
      * Changes whenever a launch is recorded, so a caller holding suggestions computed from an
      * older history can tell they are out of date.
      */
-    val revision: Int get() = revisionCounter.get()
+    val revision: Int get() = revisionState.value
+
+    /** [revision] as a flow, for UI that refreshes its suggestions after each recorded launch. */
+    val revisionFlow: StateFlow<Int> = revisionState.asStateFlow()
 
     /**
      * Records one launch of [info] if it is an app of the current user. Shortcuts, widgets, search
@@ -80,7 +87,7 @@ class AppLaunchStore private constructor(private val context: Context) {
                 map[key] = AppSuggestionRanker.recordLaunch(map[key], key, nowMs)
                 if (map.size > MAX_ENTRIES + PRUNE_SLACK) pruneLocked(map, nowMs)
             }
-            revisionCounter.incrementAndGet()
+            revisionState.update { it + 1 }
             scheduleSave()
         }
     }

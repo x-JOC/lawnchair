@@ -7,13 +7,9 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
-import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.Rect
 import android.graphics.RectF
-import android.graphics.Shader
 import android.os.Build
 import android.util.AttributeSet
 import android.util.FloatProperty
@@ -21,7 +17,6 @@ import android.util.Log
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewOutlineProvider
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.animation.Interpolator
 import android.widget.LinearLayout
@@ -30,9 +25,12 @@ import androidx.annotation.StringRes
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.isVisible
+import androidx.core.view.marginLeft
+import androidx.core.view.marginRight
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import app.lawnchair.LawnchairLauncher
+import app.lawnchair.allapps.AllAppsSearchInput
 import app.lawnchair.font.FontManager
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
@@ -41,6 +39,7 @@ import app.lawnchair.theme.color.tokens.DayNightColorToken
 import app.lawnchair.theme.color.tokens.Shade
 import app.lawnchair.theme.color.tokens.Swatch
 import app.lawnchair.theme.color.tokens.SwatchColorToken
+import app.lawnchair.theme.color.tokens.setLStar
 import app.lawnchair.util.shouldUseAlternateAllAppsTextColor
 import com.android.app.animation.Interpolators
 import com.android.launcher3.DeviceProfile
@@ -53,7 +52,6 @@ import com.android.launcher3.anim.AnimationSuccessListener
 import com.android.launcher3.anim.SpringAnimationBuilder
 import com.android.launcher3.statemanager.StateManager
 import com.android.launcher3.util.Themes
-import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -69,17 +67,18 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /**
- * Frequent, Recent and New/Updated apps in the app drawer, right under the search box: a row of
- * three tabs over up to two rows of the drawer's own icons.
+ * Frequent, Recent and New/Updated apps in the app drawer: a row of three tabs over up to two rows
+ * of the drawer's own icons, shown inside the search bar, which grows down to hold them.
  *
  * It shows while the search box is in use with an empty query ([setSearchBoxState]): from a tap
- * on the search box until the user types, scrolls the list or leaves search. Like Nova's, it is
- * drawn over the A-Z list, which never moves for it: [ActivityAllAppsContainerView] adds it above
- * the lists and below the search bar, and keeps the lists and the header from drawing under it
- * ([clipOutCoveredArea]), so it sits on the drawer background itself, whatever its color, opacity
- * or blur, with a soft shadow over the list below ([drawShadow]). It takes all touches on it; the
- * list below takes the rest. It only shows in the launcher's own drawer: in the taskbar and on
- * other displays it stays gone.
+ * on the search box until the user types, scrolls the list or leaves search. The search bar and
+ * this view then make one shape, the grown bar: the search row as it was, a hairline, the tabs
+ * and the icons, filled with the bar's own color, with the bar's corner radius at the bottom too
+ * and a soft shadow under it. [ActivityAllAppsContainerView] adds this view right under the bar,
+ * draws the grown bar behind it ([updateShape], [drawShape]) and keeps the lists and the header
+ * from drawing under the bar, which is drawn over the A-Z list: the list never moves for it.
+ * Meanwhile the bar's own background stays clear ([AllAppsSearchInput.setBarBackgroundTakenOver]).
+ * It only shows in the launcher's own drawer: in the taskbar and on other displays it stays gone.
  *
  * The panel keeps one height for all tabs (enough rows for the fullest tab), so switching tabs
  * never changes it. When every tab is empty it only has room for a one-line message. A new number
@@ -95,8 +94,13 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private val launcher: LawnchairLauncher? = context.findLawnchairLauncher()
     private val featureOn = launcher != null && isEnabledFor(context)
     private val emptyHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_empty_height)
-    private val cornerRadius = resources.getDimension(R.dimen.drawer_suggestions_panel_corner_radius)
-    private val shadowHeight = resources.getDimension(R.dimen.drawer_suggestions_panel_shadow_height)
+    private val contentPaddingTop = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_content_padding_top)
+    private val horizontalPadding = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_padding_horizontal)
+    private val hairlineHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_hairline_height).coerceAtLeast(1)
+    private val hairlineGap = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_hairline_gap)
+    private val hairlineInset = resources.getDimension(R.dimen.drawer_suggestions_hairline_inset)
+    private val shadowBlur = resources.getDimension(R.dimen.drawer_suggestions_shadow_blur)
+    private val shadowOffset = resources.getDimension(R.dimen.drawer_suggestions_shadow_offset)
     private val contentSlide = resources.getDimension(R.dimen.drawer_suggestions_content_slide)
     private val loader by lazy { AppSuggestionsLoader(context) }
 
@@ -130,22 +134,63 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private var searchBoxFocused = false
     private var queryEmpty = true
 
+    /**
+     * Whether the search bar showed its own background right before the panel was asked to show,
+     * so the grown bar starts out filled rather than fading in.
+     */
+    private var barFilledBeforeShow = false
+
     /** Whether the panel is shown, or showing; false while it hides. */
     private var showing = false
 
     /**
-     * How much of the panel is shown, from its top: 0 when hidden, 1 when all of it shows. It
-     * reveals the panel downwards from the search bar, and may overshoot 1 a little on a spring.
+     * How far the bar has grown: 0 when it is only the search row, 1 when it holds all of the
+     * panel. It may overshoot 1 a little on a spring.
      */
     private var reveal = 0f
+
+    /**
+     * How strongly the grown bar's fill, and with it its shadow, is drawn. It fades when the bar
+     * has no background of its own before the panel shows or after it hides, for example when it
+     * hides because the user types.
+     */
+    private var fillAlpha = 0f
+
+    /** How strongly the hairline under the search row is drawn, for the entrance. */
+    private var hairlineAlpha = 1f
     private var revealAnimator: Animator? = null
     private var entranceAnimator: Animator? = null
-    private val revealClip = Rect()
 
-    private val coverRect = RectF()
-    private val coverPath = Path()
-    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    /** Hides the grown bar once the search bar draws its own background again, see [animateOut]. */
+    private val finishHide = Runnable { hideNow() }
+
+    // The grown bar in the parent's coordinates, see updateShape.
+    private val shapeRect = RectF()
+    private var shapeRadius = 0f
+    private var barBottom = 0f
+
+    /** The outline of the grown bar, in the parent's coordinates, as of the last [updateShape]. */
+    val shapePath = Path()
+
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+    private val protectionPaint = Paint()
+    private val hairlinePaint = Paint()
+    private var fillColor = 0
     private var shadowColor = 0
+    private var hairlineColor = 0
+
+    /** Where the bar's sides are while the search box has focus, as insets from this view's sides. */
+    private var barInsetLeft = 0
+    private var barInsetRight = 0
+
+    /** The search box that [barLayoutListener] listens to. */
+    private var observedInput: AllAppsSearchInput? = null
+
+    /** Redraws the grown bar when the search bar moves or changes size, for example as it widens. */
+    private val barLayoutListener = OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        if (visibility == VISIBLE) invalidateParent()
+    }
 
     private var uiPaused = false
     private val resumeUiUpdates = Runnable { setUiUpdatesPaused(false) }
@@ -155,16 +200,8 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private var emptyTextRes = 0
 
     init {
-        // Draws the header protection when the list is scrolled, see onDraw.
+        // Draws the hairline under the search row, see onDraw.
         setWillNotDraw(false)
-        // Only the revealed part of the panel shows, with rounded bottom corners. The outline runs
-        // a corner radius above the top, so that only the bottom corners are rounded.
-        outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, -cornerRadius.roundToInt(), view.width, coveredHeight().roundToInt(), coverRadius())
-            }
-        }
-        clipToOutline = true
     }
 
     override fun onFinishInflate() {
@@ -178,98 +215,154 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         if (featureOn) tabBar.indicatorStyle = PreferenceManager2.getInstance(context).drawerSuggestionTabIndicator.firstCached()
     }
 
-    // Overlay
+    // The grown search bar
 
-    /** The part of the panel's height that shows, from its top. */
-    private fun coveredHeight(): Float = reveal.coerceIn(0f, 1f) * height
+    /**
+     * The drawer's search box, while it sits in the same parent as this view, as it must for the
+     * bar to grow into the panel (not with a floating search bar).
+     */
+    private fun searchInput(): AllAppsSearchInput? {
+        val input = launcher?.appsView?.searchUiManager as? AllAppsSearchInput ?: return null
+        return input.takeIf { it.parent === parent && it.isVisible }
+    }
 
-    /** Radius of the bottom corners, smaller while the revealed part is still short. */
-    private fun coverRadius(): Float = min(cornerRadius, (coveredHeight() + cornerRadius) / 2)
+    private fun invalidateParent() {
+        (parent as? View)?.invalidate()
+    }
 
-    /** Whether the panel shows over the lists, so they must leave its area to it. */
-    fun isCoveringContent(): Boolean = featureOn && visibility == VISIBLE && coveredHeight() > 0f
+    /** Whether the grown bar shows over the lists, so they must leave its area to it. */
+    fun isCoveringContent(): Boolean = featureOn && visibility == VISIBLE && searchInput() != null
 
-    /** Whether the shown part of the panel covers ([x], [y]), in the parent's coordinates. */
-    fun coversPoint(x: Float, y: Float): Boolean {
-        if (!isCoveringContent()) return false
-        val top = this.top + translationY
-        return x >= left + translationX && x < right + translationX && y >= top && y < top + coveredHeight()
+    /**
+     * Works out where the grown bar is right now, in the parent's coordinates: from the search
+     * bar's top to as far as it has grown into this view, as wide as the search bar. Returns
+     * whether it shows. The parent calls this once a frame, before drawing its children.
+     */
+    fun updateShape(): Boolean {
+        if (!featureOn || visibility != VISIBLE) return false
+        val input = searchInput() ?: return false
+        val bar = input.barView
+        if (bar.width == 0 || bar.height == 0) return false
+        val left = input.left + input.translationX + bar.left + bar.translationX
+        val top = input.top + input.translationY + bar.top + bar.translationY
+        barBottom = top + bar.height
+        val fullBottom = this.top + translationY + height
+        val bottom = barBottom + max(0f, fullBottom - barBottom) * reveal.coerceIn(0f, MAX_REVEAL)
+        shapeRect.set(left, top, left + bar.width, bottom)
+        shapeRadius = min(input.barCornerRadius(), bar.height / 2f)
+        shapePath.rewind()
+        shapePath.addRoundRect(shapeRect, shapeRadius, shapeRadius, Path.Direction.CW)
+        return true
+    }
+
+    /** Whether ([x], [y]), in the parent's coordinates, is on the grown bar. */
+    fun coversPoint(x: Float, y: Float): Boolean = updateShape() && shapeContains(x, y)
+
+    private fun shapeContains(x: Float, y: Float): Boolean {
+        if (!shapeRect.contains(x, y)) return false
+        val r = shapeRadius
+        val dx = x - x.coerceIn(shapeRect.left + r, shapeRect.right - r)
+        val dy = y - y.coerceIn(shapeRect.top + r, shapeRect.bottom - r)
+        return dx * dx + dy * dy <= r * r
     }
 
     /**
-     * Keeps [canvas], the parent's, from drawing under the shown part of the panel. The parent
-     * calls this for the lists and the header below the search bar.
+     * Draws the grown bar on [canvas], the parent's, behind this view and the search bar: its soft
+     * shadow over the lists below it, the header protection that shows behind the search row when
+     * the list is scrolled, continued down, and its fill. Call [updateShape] first.
      */
-    fun clipOutCoveredArea(canvas: Canvas) {
-        updateCoverPath()
-        canvas.clipOutPath(coverPath)
-    }
+    fun drawShape(canvas: Canvas) {
+        val container = parent as? ActivityAllAppsContainerView<*> ?: return
+        val alpha = fillAlpha * (searchInput()?.alpha ?: 1f)
+        if (alpha <= 0f) return
+        val r = shapeRadius
 
-    /** Draws the panel's shadow over the lists below it, on [canvas], the parent's. */
-    fun drawShadow(canvas: Canvas) {
-        if (Color.alpha(shadowColor) == 0 || height == 0) return
-        updateCoverPath()
-        val saveCount = canvas.save()
-        canvas.clipOutPath(coverPath)
-        canvas.translate(coverRect.left, coverRect.bottom)
-        // Fades in with the panel, rather than starting at full strength under a sliver.
-        shadowPaint.alpha = (255 * (coveredHeight() / height)).roundToInt().coerceIn(0, 255)
-        // From a corner radius above the bottom edge, so it follows the rounded corners.
-        canvas.drawRect(0f, -cornerRadius, coverRect.width(), shadowHeight, shadowPaint)
-        canvas.restoreToCount(saveCount)
-    }
+        // Fades in as the bar grows: the search bar alone has none.
+        val growth = ((shapeRect.bottom - barBottom) / max(1f, height.toFloat())).coerceIn(0f, 1f)
+        val shadowStrength = alpha * min(1f, growth * SHADOW_FADE_IN_SPEED)
+        if (shadowStrength > 0f && Color.alpha(shadowColor) != 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val saveCount = canvas.save()
+            // Only outside the bar, so a see-through fill doesn't show it.
+            canvas.clipOutPath(shapePath)
+            shadowPaint.setShadowLayer(
+                shadowBlur,
+                0f,
+                shadowOffset,
+                ColorUtils.setAlphaComponent(shadowColor, (Color.alpha(shadowColor) * shadowStrength).roundToInt()),
+            )
+            // A pixel inside the bar, so that the shape casting the shadow is clipped away whole.
+            canvas.drawRoundRect(shapeRect.left + 1, shapeRect.top + 1, shapeRect.right - 1, shapeRect.bottom - 1, r, r, shadowPaint)
+            canvas.restoreToCount(saveCount)
+        }
 
-    /** The shown part of the panel in the parent's coordinates, with its rounded bottom corners. */
-    private fun updateCoverPath() {
-        val left = left + translationX
-        val top = top + translationY
-        coverRect.set(left, top - cornerRadius, left + width, top + coveredHeight())
-        val radius = coverRadius()
-        coverPath.rewind()
-        coverPath.addRoundRect(coverRect, radius, radius, Path.Direction.CW)
+        // The lists don't draw under the bar, so the protection that shows through the search
+        // row's fill would stop where the header protection does.
+        val protection = container.headerProtectionColor
+        val protectionTop = max(barBottom, container.headerProtectionBottom)
+        if (Color.alpha(protection) != 0 && protectionTop < shapeRect.bottom) {
+            val saveCount = canvas.save()
+            canvas.clipPath(shapePath)
+            canvas.clipRect(shapeRect.left, protectionTop, shapeRect.right, shapeRect.bottom)
+            protectionPaint.color = protection
+            protectionPaint.alpha = (Color.alpha(protection) * alpha).roundToInt()
+            canvas.drawRect(shapeRect, protectionPaint)
+            canvas.restoreToCount(saveCount)
+        }
+
+        fillPaint.color = fillColor
+        fillPaint.alpha = (Color.alpha(fillColor) * alpha).roundToInt()
+        canvas.drawRoundRect(shapeRect, r, r, fillPaint)
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        // With the list scrolled, the drawer draws a header protection behind the search bar; the
-        // panel continues it. Otherwise the drawer background shows through.
-        val protection = (parent as? ActivityAllAppsContainerView<*>)?.headerProtectionColor ?: 0
-        if (Color.alpha(protection) != 0) canvas.drawColor(protection)
+        // The hairline under the search row, at the top of this view, which starts where the
+        // search bar ends.
+        val alpha = (Color.alpha(hairlineColor) * hairlineAlpha).roundToInt()
+        if (alpha > 0) {
+            hairlinePaint.color = hairlineColor
+            hairlinePaint.alpha = alpha
+            canvas.drawRect(barInsetLeft + hairlineInset, 0f, width - barInsetRight - hairlineInset, hairlineHeight.toFloat(), hairlinePaint)
+        }
     }
 
     /**
-     * Shows [value] of the panel (see [reveal]), with the content sliding down into place as it
+     * Grows the bar to [value] (see [reveal]), with the content sliding down into place as it
      * opens. Only render properties change, so nothing is laid out again.
      */
     private fun setReveal(value: Float) {
         if (reveal == value) return
         reveal = value
-        val slide = (1f - value) * -contentSlide
+        val slide = (1f - value).coerceAtLeast(0f) * -contentSlide
         tabBar.translationY = slide
         content.translationY = slide
-        updateRevealClip()
+        invalidateParent()
     }
 
-    /**
-     * Clips the panel to its shown part: the outline rounds its bottom corners, the clip bounds
-     * keep content that slides from above inside its top edge.
-     */
-    private fun updateRevealClip() {
-        revealClip.set(0, 0, width, ceil(coveredHeight()).toInt())
-        clipBounds = revealClip
-        invalidateOutline()
-        // The parent draws the clip over the lists and the shadow.
-        (parent as? View)?.invalidate()
+    private fun setFillAlpha(value: Float) {
+        if (fillAlpha == value) return
+        fillAlpha = value
+        invalidateParent()
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        updateRevealClip()
+    private fun setHairlineAlpha(value: Float) {
+        if (hairlineAlpha == value) return
+        hairlineAlpha = value
+        invalidate()
     }
 
-    /** Takes every touch on its shown part, so none reaches the list under it. */
+    /** Hands the search bar's background to the grown bar, or back. */
+    private fun setBarTakenOver(takenOver: Boolean) {
+        launcher?.appsView?.searchUiManager?.let { (it as? AllAppsSearchInput)?.setBarBackgroundTakenOver(takenOver) }
+    }
+
+    /** Takes the touches on the grown bar, so none reaches the list under it. */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.actionMasked == MotionEvent.ACTION_DOWN && !(showing && ev.y < coveredHeight())) return false
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN &&
+            !(showing && coversPoint(ev.x + left + translationX, ev.y + top + translationY))
+        ) {
+            return false
+        }
         return super.dispatchTouchEvent(ev)
     }
 
@@ -280,12 +373,21 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // Pad each side like the app lists (AdapterHolder.mPadding), so the icons line up with the
-        // columns below.
-        launcher?.deviceProfile?.allAppsPadding?.let { padding ->
-            if (paddingLeft != padding.left || paddingRight != padding.right) {
-                setPadding(padding.left, paddingTop, padding.right, paddingBottom)
-            }
+        // The tabs and icons sit inside the bar, which is wider while the search box has focus.
+        val input = searchInput()
+        if (input != null) {
+            barInsetLeft = input.marginLeft + input.focusedBarPaddingLeft
+            barInsetRight = input.marginRight + input.focusedBarPaddingRight
+        } else {
+            val padding = launcher?.deviceProfile?.allAppsPadding
+            barInsetLeft = padding?.left ?: 0
+            barInsetRight = padding?.right ?: 0
+        }
+        val left = barInsetLeft + horizontalPadding
+        val right = barInsetRight + horizontalPadding
+        val top = hairlineHeight + hairlineGap
+        if (paddingLeft != left || paddingRight != right || paddingTop != top) {
+            setPadding(left, top, right, paddingBottom)
         }
         // The tab bar is as tall as its labels need, which depends on the width it gets.
         tabBar.measure(
@@ -323,6 +425,11 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         val prefs = PreferenceManager2.getInstance(context)
         prefs.hiddenApps.get().drop(1).onEach { refresh() }.launchIn(newScope)
         prefs.drawerSuggestionTabIndicator.get().onEach { tabBar.indicatorStyle = it }.launchIn(newScope)
+        searchInput()?.let { input ->
+            observedInput = input
+            input.addOnLayoutChangeListener(barLayoutListener)
+            input.barView.addOnLayoutChangeListener(barLayoutListener)
+        }
         applyColors()
         refresh()
     }
@@ -341,14 +448,23 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         }
         launcher.stateManager.removeStateListener(stateListener)
         launcher.lifecycle.removeObserver(lifecycleObserver)
+        observedInput?.let { input ->
+            input.removeOnLayoutChangeListener(barLayoutListener)
+            input.barView.removeOnLayoutChangeListener(barLayoutListener)
+        }
+        observedInput = null
         listOf(grid, emptyText).forEach {
             it.animate().cancel()
             it.alpha = 1f
         }
         cancelAnimations()
-        setReveal(if (showing) 1f else 0f)
-        if (!showing) visibility = GONE
-        resetContent()
+        if (showing) {
+            setReveal(1f)
+            setFillAlpha(1f)
+            resetContent()
+        } else {
+            hideNow()
+        }
     }
 
     override fun onAppsUpdated() {
@@ -399,6 +515,8 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     fun setSearchBoxState(focused: Boolean, queryEmpty: Boolean) {
         if (!featureOn) return
         val sessionStarts = focused && !searchBoxFocused
+        // An unfocused empty search bar shows its own background, see AllAppsSearchInput.
+        barFilledBeforeShow = !searchBoxFocused && this.queryEmpty
         searchBoxFocused = focused
         this.queryEmpty = queryEmpty
         if (sessionStarts) {
@@ -468,34 +586,36 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     /** Shows the panel while the search box is in use with an empty query, once it has suggestions. */
     private fun updateShown(animate: Boolean = true) {
-        val show = featureOn && sized && searchBoxFocused && queryEmpty
+        val show = featureOn && sized && searchBoxFocused && queryEmpty && searchInput() != null
         if (show == showing) return
         showing = show
         val animated = animate && mayAnimate()
+        removeCallbacks(finishHide)
         if (show) {
             visibility = VISIBLE
+            setBarTakenOver(true)
             if (animated) {
                 animateIn()
             } else {
                 cancelAnimations()
                 resetContent()
+                setFillAlpha(1f)
                 setReveal(1f)
             }
-        } else if (animated && reveal > 0f) {
+        } else if (animated && visibility == VISIBLE) {
             animateOut()
         } else {
             cancelAnimations()
-            setReveal(0f)
-            visibility = GONE
-            resetContent()
+            hideNow()
         }
+        barFilledBeforeShow = false
     }
 
     /**
-     * Opens the panel: it unfolds downwards from the search bar on a gentle spring while its
-     * content slides down into place, the tabs fade in, the selected tab's indicator draws in and
-     * the icons pop in one after another in reading order. Coming back from a close that has only
-     * just started, the content simply fades back in.
+     * Opens the panel: the search bar grows down to hold it on a gentle spring while its content
+     * slides down into place, the hairline and the tabs fade in, the selected tab's indicator
+     * draws in and the icons pop in one after another in reading order. Coming back from a close
+     * that has only just started, the content simply fades back in.
      */
     private fun animateIn() {
         cancelAnimations()
@@ -503,6 +623,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         if (fresh) {
             tabBar.alpha = 0f
             tabBar.indicatorReveal = 0f
+            setHairlineAlpha(0f)
             // The empty-tab message fades in as a whole; icons each on their own.
             content.alpha = if (emptyText.isVisible) 0f else 1f
             grid.setEntranceTime(0f)
@@ -510,16 +631,21 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
             tabBar.indicatorReveal = 1f
             grid.endEntrance()
         }
+        // The bar grows out of the search bar's own background, or fades in where there was none,
+        // for example when the query is cleared.
+        if (barFilledBeforeShow) setFillAlpha(1f)
+        val startFillAlpha = fillAlpha
         val startTabAlpha = tabBar.alpha
         val startContentAlpha = content.alpha
+        val startHairlineAlpha = hairlineAlpha
 
         revealAnimator = SpringAnimationBuilder(context)
             .setStartValue(reveal)
             .setEndValue(1f)
             .setDampingRatio(REVEAL_DAMPING_RATIO)
             .setStiffness(REVEAL_STIFFNESS)
-            // One pixel of the panel.
-            .setMinimumVisibleChange(1f / height.coerceAtLeast(1))
+            // Under a pixel of the panel, which may not have been laid out yet.
+            .setMinimumVisibleChange(REVEAL_MIN_VISIBLE_CHANGE)
             .build(this, REVEAL)
             .also { it.start() }
 
@@ -529,8 +655,11 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
             interpolator = Interpolators.LINEAR
             addUpdateListener { animator ->
                 val time = animator.animatedValue as Float
+                setFillAlpha(Utilities.mapRange(progressAt(time, 0L, FILL_FADE_DURATION_MS, Interpolators.LINEAR), startFillAlpha, 1f))
                 if (fresh) {
-                    tabBar.alpha = progressAt(time, ENTRANCE_TABS_DELAY_MS, ENTRANCE_TABS_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE)
+                    val tabs = progressAt(time, ENTRANCE_TABS_DELAY_MS, ENTRANCE_TABS_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE)
+                    tabBar.alpha = tabs
+                    setHairlineAlpha(tabs)
                     tabBar.indicatorReveal = progressAt(time, ENTRANCE_INDICATOR_DELAY_MS, ENTRANCE_INDICATOR_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE)
                     content.alpha = Utilities.mapRange(progressAt(time, ENTRANCE_ICONS_DELAY_MS, ENTRANCE_TABS_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE), startContentAlpha, 1f)
                     grid.setEntranceTime(time - ENTRANCE_ICONS_DELAY_MS)
@@ -538,6 +667,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
                     val progress = Interpolators.EMPHASIZED_DECELERATE.getInterpolation(animator.animatedFraction)
                     tabBar.alpha = Utilities.mapRange(progress, startTabAlpha, 1f)
                     content.alpha = Utilities.mapRange(progress, startContentAlpha, 1f)
+                    setHairlineAlpha(Utilities.mapRange(progress, startHairlineAlpha, 1f))
                 }
             }
             addListener(
@@ -545,6 +675,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
                     override fun onAnimationSuccess(animation: Animator) {
                         entranceAnimator = null
                         resetContent()
+                        setFillAlpha(1f)
                     }
                 },
             )
@@ -553,35 +684,59 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     }
 
     /**
-     * Closes the panel quickly: it folds back up into the search bar while its content fades and
-     * slides up, then goes.
+     * Closes the panel quickly: the bar shrinks back into the search bar while the content fades
+     * and slides up. When the search bar then shows its own background (the search box no longer
+     * has focus and the query is empty), the bar keeps its fill and hands it over to the search
+     * bar at the end; otherwise, for example when the user types, the fill fades out with it.
      */
     private fun animateOut() {
         cancelAnimations()
+        val handOver = !searchBoxFocused && queryEmpty
         val startReveal = reveal
+        val startFillAlpha = fillAlpha
         val startTabAlpha = tabBar.alpha
         val startContentAlpha = content.alpha
+        val startHairlineAlpha = hairlineAlpha
         revealAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = HIDE_DURATION_MS
             interpolator = Interpolators.LINEAR
             addUpdateListener { animator ->
                 val fraction = animator.animatedFraction
                 setReveal(Utilities.mapRange(Interpolators.EMPHASIZED_ACCELERATE.getInterpolation(fraction), startReveal, 0f))
+                setFillAlpha(Utilities.mapRange(fraction, startFillAlpha, if (handOver) 1f else 0f))
                 val fade = 1f - (fraction / HIDE_FADE_SHARE).coerceAtMost(1f)
                 tabBar.alpha = startTabAlpha * fade
                 content.alpha = startContentAlpha * fade
+                setHairlineAlpha(startHairlineAlpha * fade)
             }
             addListener(
                 object : AnimationSuccessListener() {
                     override fun onAnimationSuccess(animation: Animator) {
                         revealAnimator = null
-                        visibility = GONE
-                        resetContent()
+                        if (handOver) {
+                            // The search bar draws its background again from its next frame;
+                            // until then, the shrunk bar stands in for it.
+                            setBarTakenOver(false)
+                            postDelayed(finishHide, HAND_OVER_DELAY_MS)
+                        } else {
+                            hideNow()
+                        }
                     }
                 },
             )
             start()
         }
+    }
+
+    /** Hides the panel and the grown bar right away, and gives the search bar its background back. */
+    private fun hideNow() {
+        removeCallbacks(finishHide)
+        setReveal(0f)
+        setFillAlpha(0f)
+        visibility = GONE
+        resetContent()
+        setBarTakenOver(false)
+        invalidateParent()
     }
 
     /** Stops the panel's animations where they are. */
@@ -597,6 +752,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         tabBar.alpha = 1f
         tabBar.indicatorReveal = 1f
         content.alpha = 1f
+        setHairlineAlpha(1f)
         grid.endEntrance()
     }
 
@@ -683,26 +839,19 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         emptyText.setTextColor(
             ColorUtils.setAlphaComponent(labelColor, (Color.alpha(labelColor) * EMPTY_TEXT_ALPHA).roundToInt()),
         )
+        // The grown bar takes the search bar's own fill, with a hairline in Material's outline
+        // variant color under the search row.
+        fillColor = searchInput()?.barFillColor() ?: 0
+        hairlineColor = HAIRLINE_COLOR.resolveColor(context)
         // Light labels mean a dark drawer, where the shadow needs to be stronger to show.
         val darkDrawer = ColorUtils.calculateLuminance(labelColor) > 0.5
-        val color = ColorUtils.setAlphaComponent(Color.BLACK, if (darkDrawer) SHADOW_ALPHA_DARK else SHADOW_ALPHA_LIGHT)
-        if (color != shadowColor) {
-            shadowColor = color
-            shadowPaint.shader = LinearGradient(
-                0f,
-                0f,
-                0f,
-                shadowHeight,
-                intArrayOf(color, ColorUtils.setAlphaComponent(color, Color.alpha(color) * 2 / 5), Color.TRANSPARENT),
-                floatArrayOf(0f, 0.35f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-            (parent as? View)?.invalidate()
-        }
+        shadowColor = ColorUtils.setAlphaComponent(Color.BLACK, if (darkDrawer) SHADOW_ALPHA_DARK else SHADOW_ALPHA_LIGHT)
+        invalidate()
+        invalidateParent()
     }
 
     /** Height below the tabs: the rows of icons, or one line for the message if every tab is empty. */
-    private fun contentHeight(): Int = if (reservedRows > 0) reservedRows * grid.rowHeight() else emptyHeight
+    private fun contentHeight(): Int = contentPaddingTop + if (reservedRows > 0) reservedRows * grid.rowHeight() else emptyHeight
 
     private val stateListener = object : StateManager.StateListener<LauncherState> {
         override fun onStateTransitionStart(toState: LauncherState) {
@@ -739,16 +888,23 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         private const val TAB_FADE_DURATION_MS = 150L
         private const val EMPTY_TEXT_ALPHA = 0.8f
 
-        /** The spring the panel opens on: a little softer than the drawer's own, barely bouncing. */
+        /** The spring the bar grows on: a little softer than the drawer's own, barely bouncing. */
         private const val REVEAL_STIFFNESS = 600f
         private const val REVEAL_DAMPING_RATIO = 0.82f
 
+        /** How far past its full height the bar may grow while it bounces into place. */
+        private const val MAX_REVEAL = 1.1f
+        private const val REVEAL_MIN_VISIBLE_CHANGE = 0.001f
+
         // When each part of the panel's content comes in, from the start of its opening.
-        private const val ENTRANCE_TABS_DELAY_MS = 30L
-        private const val ENTRANCE_TABS_DURATION_MS = 200L
-        private const val ENTRANCE_INDICATOR_DELAY_MS = 120L
+        private const val ENTRANCE_TABS_DELAY_MS = 60L
+        private const val ENTRANCE_TABS_DURATION_MS = 220L
+        private const val ENTRANCE_INDICATOR_DELAY_MS = 140L
         private const val ENTRANCE_INDICATOR_DURATION_MS = 300L
-        private const val ENTRANCE_ICONS_DELAY_MS = 60L
+        private const val ENTRANCE_ICONS_DELAY_MS = 120L
+
+        /** The fill fading in, when the search bar had no background of its own. */
+        private const val FILL_FADE_DURATION_MS = 100L
 
         /** Fading back in after a close that was cut short. */
         private const val RETURN_DURATION_MS = 150L
@@ -756,6 +912,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         /** Closing, and the share of it that the content takes to fade out. */
         private const val HIDE_DURATION_MS = 150L
         private const val HIDE_FADE_SHARE = 0.66f
+
+        /**
+         * How long the shrunk bar stays after handing the background back to the search bar, which
+         * draws it again from its next frame or so; a little overlap rather than a frame without.
+         */
+        private const val HAND_OVER_DELAY_MS = 50L
 
         private val REVEAL = object : FloatProperty<AppSuggestionsHeaderView>("reveal") {
             override fun setValue(view: AppSuggestionsHeaderView, value: Float) = view.setReveal(value)
@@ -769,9 +931,15 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
          */
         private fun progressAt(time: Float, delay: Long, duration: Long, interpolator: Interpolator): Float = interpolator.getInterpolation(((time - delay) / duration).coerceIn(0f, 1f))
 
-        /** Strength of the shadow under the panel, at its edge. */
-        private const val SHADOW_ALPHA_LIGHT = 0x24
+        /** Strength of the shadow under the grown bar. */
+        private const val SHADOW_ALPHA_LIGHT = 0x29
         private const val SHADOW_ALPHA_DARK = 0x59
+
+        /** The shadow is at full strength once the bar has grown a third of the way. */
+        private const val SHADOW_FADE_IN_SPEED = 3f
+
+        /** Material's outline variant color, for the hairline under the search row. */
+        private val HAIRLINE_COLOR = DayNightColorToken(ColorTokens.Neutral2_500.setLStar(80.0), ColorTokens.Neutral2_500.setLStar(30.0))
 
         /**
          * The selected tab's pill and label: the colors of a selected chip in Lawnchair's settings

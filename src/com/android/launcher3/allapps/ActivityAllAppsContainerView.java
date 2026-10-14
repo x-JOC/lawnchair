@@ -652,7 +652,11 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
      * @return {@code true} if back gesture should exit search rather than change launcher state.
       */
     public boolean shouldBackExitSearch() {
-        return isSearching();
+        // LC-Note: a focused search box is a search session even when no results are shown (the
+        // drawer's suggestion tabs keep the drawer for an empty query). Back leaves it first
+        // (LawnchairLauncher#onStateBack), so preview that rather than closing the drawer.
+        ExtendedEditText editText = mSearchUiManager == null ? null : mSearchUiManager.getEditText();
+        return isSearching() || (editText != null && editText.hasFocus());
     }
 
     @Override

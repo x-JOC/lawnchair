@@ -38,6 +38,7 @@ import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.RecyclerView
 import app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView
 import app.lawnchair.launcher
 import app.lawnchair.preferences.PreferenceManager
@@ -291,10 +292,15 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                     ensureKeyboardWithSuggestionTabs()
                 }
 
+                suggestionsHeader()?.setSearchSessionActive(true)
                 setBackgroundVisibility(false, 0f)
                 animateHintVisibility(true)
                 animatePadding(currentPaddingLeft / 2, currentPaddingRight / 2)
             } else {
+                // Dragging a list takes the focus (AllAppsRecyclerView) without leaving search:
+                // keep the suggestion tabs then, rather than resizing the header mid-scroll. They
+                // go when the drawer closes.
+                if (!isDraggingList()) suggestionsHeader()?.setSearchSessionActive(false)
                 setBackgroundVisibility(true, 1f)
                 animateHintVisibility(false)
                 // Not with the suggestion tabs on: the history is only shown on the search page
@@ -370,9 +376,18 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
         }
     }
 
+    /** The drawer's suggestion tabs, which show while the search box is in use. */
+    private fun suggestionsHeader(): AppSuggestionsHeaderView? {
+        if (!::appsView.isInitialized) return null
+        return appsView.floatingHeaderView?.findFixedRowByType(AppSuggestionsHeaderView::class.java)
+    }
+
+    private fun isDraggingList(): Boolean = ::appsView.isInitialized &&
+        appsView.activeRecyclerView?.scrollState == RecyclerView.SCROLL_STATE_DRAGGING
+
     /**
-     * With the suggestion tabs on, tapping the empty box changes nothing else on screen, so the
-     * keyboard is the only sign that the box is ready. The first tap in a new launcher window has
+     * With the suggestion tabs on, tapping the empty box keeps the drawer on screen, so the
+     * keyboard is the main sign that the box is ready. The first tap in a new launcher window has
      * been seen to focus the box without the keyboard coming up, so ask for it once more on the
      * next frame if it isn't showing by then.
      */

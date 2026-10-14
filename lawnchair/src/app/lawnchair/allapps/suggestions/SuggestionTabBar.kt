@@ -36,11 +36,13 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * The Frequent / Recent / New tabs at the top of the app drawer, drawn like the tab chips in
- * Lawnchair's settings (`ui/preferences/components/layout/Chip.kt`): the selected label sits on a
- * rounded pill and takes the accent color, the other labels are plain text in the drawer's label
- * color. The pill slides to a newly picked tab, stretching towards it first, and each label takes
- * the selected color while the pill is under it. Press feedback is a ripple of the pill's shape.
+ * The Frequent / Recent / New tabs at the top of the app drawer. The selected label takes the
+ * accent color and is marked by the [indicatorStyle]: an accent line under it (the default), or a
+ * rounded pill behind it like the tab chips in Lawnchair's settings
+ * (`ui/preferences/components/layout/Chip.kt`). The other labels are plain text in the drawer's
+ * label color. The indicator slides to a newly picked tab, stretching towards it first, and each
+ * label takes the selected color while the indicator is under it. Press feedback is a ripple of
+ * the pill's shape.
  *
  * Each tab is as wide as its label plus the pill padding, and the space left over is shared out
  * equally, so the pills sit evenly spaced and long labels (Arabic "الأكثر استخدامًا") keep their
@@ -59,7 +61,11 @@ class SuggestionTabBar @JvmOverloads constructor(
     private lateinit var tabs: List<TextView>
 
     private val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var pillColor = Color.GRAY
+    private var lineColor = Color.BLACK
     private val pillMinWidth = resources.getDimension(R.dimen.drawer_suggestions_pill_min_width)
+    private val lineMinWidth = resources.getDimension(R.dimen.drawer_suggestions_line_min_width)
+    private val lineHeight = resources.getDimension(R.dimen.drawer_suggestions_line_height)
     private val minPillGap = resources.getDimension(R.dimen.drawer_suggestions_pill_min_gap)
     private val maxTextSize = resources.getDimension(R.dimen.drawer_suggestions_tab_text_size_max)
     private val minTextSize = resources.getDimension(R.dimen.drawer_suggestions_tab_text_size_min)
@@ -73,6 +79,17 @@ class SuggestionTabBar @JvmOverloads constructor(
     private var pillLeft = 0f
     private var pillRight = 0f
     private var pillAnimator: ValueAnimator? = null
+
+    /** How the selected tab is marked. Changing it moves the indicator right away. */
+    var indicatorStyle = SuggestionTabIndicator.LINE
+        set(value) {
+            if (field == value) return
+            field = value
+            pillAnimator?.cancel()
+            pillAnimator = null
+            updatePaintColor()
+            snapPill()
+        }
 
     init {
         setWillNotDraw(false)
@@ -102,13 +119,15 @@ class SuggestionTabBar @JvmOverloads constructor(
     }
 
     /**
-     * Label colors for the selected tab (on the pill) and the others, the pill color, and the
-     * color of the press ripple.
+     * Label colors for the selected tab and the others, the colors of the pill and the line
+     * indicators, and the color of the press ripple.
      */
-    fun applyColors(selectedTextColor: Int, unselectedTextColor: Int, pillColor: Int, rippleColor: Int) {
+    fun applyColors(selectedTextColor: Int, unselectedTextColor: Int, pillColor: Int, lineColor: Int, rippleColor: Int) {
         this.selectedTextColor = selectedTextColor
         this.unselectedTextColor = unselectedTextColor
-        pillPaint.color = pillColor
+        this.pillColor = pillColor
+        this.lineColor = lineColor
+        updatePaintColor()
         val rippleColors = ColorStateList.valueOf(rippleColor)
         tabs.forEach { (it.background as? RippleDrawable)?.setColor(rippleColors) }
         updateLabelColors()
@@ -136,7 +155,7 @@ class SuggestionTabBar @JvmOverloads constructor(
             interpolator = Interpolators.LINEAR
             addUpdateListener { animator ->
                 // Read the target every frame, in case the tabs are laid out again meanwhile.
-                val (toLeft, toRight) = pillBounds(selectedTab.ordinal)
+                val (toLeft, toRight) = indicatorBounds(selectedTab.ordinal)
                 val fraction = animator.animatedFraction
                 // The edge in the direction of travel leads and the other one follows, so the
                 // pill stretches towards the new tab, then catches up.
@@ -219,8 +238,13 @@ class SuggestionTabBar @JvmOverloads constructor(
         }
     }
 
+    private fun updatePaintColor() {
+        pillPaint.color = if (indicatorStyle == SuggestionTabIndicator.PILL) pillColor else lineColor
+        invalidate()
+    }
+
     private fun snapPill() {
-        val (left, right) = pillBounds(selectedTab.ordinal)
+        val (left, right) = indicatorBounds(selectedTab.ordinal)
         pillLeft = left
         pillRight = right
         updateLabelColors()
@@ -235,16 +259,33 @@ class SuggestionTabBar @JvmOverloads constructor(
     private fun pillBounds(index: Int): Pair<Float, Float> {
         val view = tabs[index]
         if (view.width == 0) return 0f to 0f
+        val maxWidth = view.width.toFloat()
+        val width = (labelWidth(view) + view.paddingStart + view.paddingEnd).coerceIn(min(pillMinWidth, maxWidth), maxWidth)
+        val center = view.left + view.width / 2f
+        return (center - width / 2) to (center + width / 2)
+    }
+
+    /**
+     * Left and right edges of the selection indicator for the tab at [index]: the pill, or a line
+     * as wide as the label.
+     */
+    private fun indicatorBounds(index: Int): Pair<Float, Float> {
+        if (indicatorStyle == SuggestionTabIndicator.PILL) return pillBounds(index)
+        val view = tabs[index]
+        if (view.width == 0) return 0f to 0f
+        val maxWidth = (view.width - view.paddingStart - view.paddingEnd).toFloat().coerceAtLeast(0f)
+        val width = labelWidth(view).coerceIn(min(lineMinWidth, maxWidth), maxWidth)
+        val center = view.left + view.width / 2f
+        return (center - width / 2) to (center + width / 2)
+    }
+
+    private fun labelWidth(view: TextView): Float {
         val layout = view.layout
-        val labelWidth = if (layout != null && layout.lineCount > 0) {
+        return if (layout != null && layout.lineCount > 0) {
             layout.getLineWidth(0)
         } else {
             view.paint.measureText(view.text, 0, view.text.length)
         }
-        val maxWidth = view.width.toFloat()
-        val width = (labelWidth + view.paddingStart + view.paddingEnd).coerceIn(min(pillMinWidth, maxWidth), maxWidth)
-        val center = view.left + view.width / 2f
-        return (center - width / 2) to (center + width / 2)
     }
 
     /** Keeps each tab's ripple to the area its pill takes when that tab is selected. */
@@ -264,12 +305,12 @@ class SuggestionTabBar @JvmOverloads constructor(
     }
 
     /**
-     * Label colors follow the pill: a label is in the selected color as far as the pill covers
-     * its own pill area, so it changes color as the pill slides over it.
+     * Label colors follow the indicator: a label is in the selected color as far as the indicator
+     * covers its own indicator area, so it changes color as the indicator slides over it.
      */
     private fun updateLabelColors() {
         tabs.forEachIndexed { index, view ->
-            val (left, right) = pillBounds(index)
+            val (left, right) = indicatorBounds(index)
             val coverage = if (right > left && pillRight > pillLeft) {
                 ((min(right, pillRight) - max(left, pillLeft)) / (right - left)).coerceIn(0f, 1f)
             } else if (index == selectedTab.ordinal) {
@@ -282,11 +323,11 @@ class SuggestionTabBar @JvmOverloads constructor(
     }
 
     override fun dispatchDraw(canvas: Canvas) {
-        // Behind the labels and their ripples.
+        // Behind the labels and their ripples. The line sits at the bottom of the pill area.
         if (pillRight > pillLeft && tabs.isNotEmpty()) {
             val tab = tabs[0]
-            val top = (tab.top + tab.paddingTop).toFloat()
             val bottom = (tab.bottom - tab.paddingBottom).toFloat()
+            val top = if (indicatorStyle == SuggestionTabIndicator.PILL) (tab.top + tab.paddingTop).toFloat() else bottom - lineHeight
             val radius = (bottom - top) / 2
             canvas.drawRoundRect(pillLeft, top, pillRight, bottom, radius, radius, pillPaint)
         }

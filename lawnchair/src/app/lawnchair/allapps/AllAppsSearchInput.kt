@@ -292,7 +292,9 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             } else {
                 setBackgroundVisibility(true, 1f)
                 animateHintVisibility(false)
-                if (prefs.searchResulRecentSuggestion.get()) {
+                // Not with the suggestion tabs on: the history is only shown on the search page
+                // that the tabs replace (showZeroState), so it would only pile up unseen.
+                if (prefs.searchResulRecentSuggestion.get() && !AppSuggestionsHeaderView.isEnabledFor(context)) {
                     val query = editText.text.toString()
                     suggestionsRecent.saveRecentQuery(query, null)
                 }

@@ -969,6 +969,12 @@
     <string name="drawer_suggestions_empty_new">No new or updated apps</string>
     <string name="drawer_suggestion_tabs_title">Suggestion tabs</string>
     <string name="drawer_suggestion_tabs_description">Frequent, recent and new or updated apps at the top of the app drawer</string>
+    <!-- Suggestion tabs setting, when the app drawer search bar is hidden. -->
+    <string name="drawer_suggestion_tabs_needs_search_bar">Needs the app drawer search bar</string>
+    <!-- Subtitle of the Suggestions settings entry while the suggestion tabs replace the suggested apps row in the app drawer. -->
+    <string name="drawer_suggestion_tabs_replace_suggestions">The app drawer shows suggestion tabs instead</string>
+    <!-- Search history setting while the suggestion tabs are on: the empty search box shows the app drawer, not the history. -->
+    <string name="search_history_off_with_suggestion_tabs">Not available while the app drawer shows suggestion tabs</string>
 
     <string name="perform_wide_search_title">Device search</string>
     <string name="perform_wide_search_description">Search your phone contacts, files, and settings</string>

@@ -444,11 +444,16 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
         /**
          * Whether the suggestion tabs are shown in the drawer of [context]: only in Lawnchair's own
-         * launcher, and only while the setting is on. The suggested apps row hides itself then.
+         * launcher, and only while the setting is on and the drawer has its search bar. Without the
+         * search bar and a work profile, the drawer hides its whole header, so the tabs would have
+         * no place; the settings say so. The suggested apps row hides itself while the tabs show.
          */
         @JvmStatic
-        fun isEnabledFor(context: Context): Boolean = context.findLawnchairLauncher() != null &&
-            PreferenceManager2.getInstance(context).drawerSuggestionTabs.firstCached()
+        fun isEnabledFor(context: Context): Boolean {
+            if (context.findLawnchairLauncher() == null) return false
+            val prefs = PreferenceManager2.getInstance(context)
+            return prefs.drawerSuggestionTabs.firstCached() && !prefs.hideAppDrawerSearchBar.firstCached()
+        }
 
         /** Two rows of icons, or one on a phone in landscape, where the screen is short. */
         private fun maxRows(dp: DeviceProfile): Int = if (dp.deviceProperties.isPhone && dp.deviceProperties.isLandscape) 1 else 2

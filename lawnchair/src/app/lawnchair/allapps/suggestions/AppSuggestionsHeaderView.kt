@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.graphics.Color
 import android.os.Build
 import android.util.AttributeSet
+import android.util.Log
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
@@ -34,6 +35,7 @@ import com.android.launcher3.anim.AlphaUpdateListener
 import com.android.launcher3.statemanager.StateManager
 import com.android.launcher3.util.Themes
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
@@ -86,6 +88,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     /** The height last reported to the drawer through [FloatingHeaderView.onHeightUpdated]. */
     private var reportedHeight = 0
+
+    /**
+     * Set by a device profile change: the next suggestions, loaded for the new grid, may change the
+     * header height even while the drawer is open, because the drawer is laid out again anyway.
+     */
+    private var resizeOnNextLoad = false
 
     private var uiPaused = false
     private var selectedTab = lastPickedTab ?: SuggestionTab.FREQUENT
@@ -185,6 +193,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         // Icon views take their sizes from the device profile when they are created.
         grid.clearCells()
         showLatest(allowHeightChange = true)
+        // The current suggestions were loaded for the old grid (for example one row in landscape),
+        // so let the ones for the new grid resize the header too, as soon as they are ready.
+        resizeOnNextLoad = true
         refresh()
     }
 
@@ -209,8 +220,19 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         val limit = dp.numShownAllAppsColumns * maxRows(dp)
         refreshJob?.cancel()
         refreshJob = currentScope.launch {
-            latest = loader.load(apps, limit)
-            showLatest(allowHeightChange = !isDrawerOnScreen())
+            val snapshot = try {
+                loader.load(apps, limit)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Keep the suggestions already shown rather than taking the launcher down.
+                Log.w(TAG, "Unable to load app suggestions", e)
+                return@launch
+            }
+            latest = snapshot
+            val resize = resizeOnNextLoad
+            resizeOnNextLoad = false
+            showLatest(allowHeightChange = resize || !isDrawerOnScreen())
         }
     }
 
@@ -346,6 +368,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     }
 
     companion object {
+        private const val TAG = "AppSuggestionsHeader"
         private const val TAB_FADE_DURATION_MS = 150L
         private const val UNSELECTED_TEXT_ALPHA = 0.7f
 

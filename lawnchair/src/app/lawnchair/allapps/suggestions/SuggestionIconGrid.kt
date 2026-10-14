@@ -15,11 +15,11 @@ import kotlin.math.ceil
 import kotlin.math.min
 
 /**
- * Rows of app icons laid out like the drawer's A-Z grid below them: the same icon view
- * (`all_apps_icon`), column widths and right-to-left order as the grid's `GridLayoutManager`, so
- * the columns line up, in shorter rows ([rowHeight]). The icons are direct children, so
- * [com.android.launcher3.allapps.AllAppsStore] can update their notification dots and install
- * progress like any other drawer icon.
+ * Rows of app icons laid out like the drawer's A-Z grid: the same icon view (`all_apps_icon`),
+ * number of columns, column borders and right-to-left order as the grid's `GridLayoutManager`,
+ * spread over the width of the grown search bar that holds them, in shorter rows ([rowHeight]).
+ * The icons are direct children, so [com.android.launcher3.allapps.AllAppsStore] can update their
+ * notification dots and install progress like any other drawer icon.
  */
 class SuggestionIconGrid @JvmOverloads constructor(
     context: Context,
@@ -134,9 +134,9 @@ class SuggestionIconGrid @JvmOverloads constructor(
 
     /**
      * Height of a row: an icon and its label with a little space above and below, which is less
-     * than the drawer's own cell height. The panel is drawn over the list, so its rows don't need
-     * to line up with the list's; the columns still do. Icons center themselves in it
-     * (`centerVertically`). Two-line labels keep the full cell height.
+     * than the drawer's own cell height. The rows are drawn over the list, so they don't need to
+     * line up with the list's. Icons center themselves in it (`centerVertically`). Two-line labels
+     * keep the full cell height.
      */
     fun rowHeight(): Int {
         val dp = launcher?.deviceProfile ?: return 0

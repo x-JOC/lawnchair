@@ -56,6 +56,7 @@ import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.WindowInsets;
@@ -182,9 +183,15 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     private final RectF mTmpRectF = new RectF();
     protected AllAppsPagedView mViewPager;
     protected FloatingHeaderView mHeader;
-    // LC-Note: the drawer's suggestion tabs, drawn over the lists right under the search bar
-    // while the search box is in use. They never move the lists.
+    // LC-Note: the drawer's suggestion tabs, shown while the search box is in use inside the
+    // search bar, which grows down over the lists to hold them. They never move the lists.
     protected AppSuggestionsHeaderView mSuggestionsPanel;
+    // LC-Note: whether the grown search bar shows in the frame being drawn.
+    private boolean mSuggestionsShapeShown;
+    // LC-Note: a touch that closed the suggestion tabs as it landed outside the grown search bar
+    // (see dispatchTouchEvent), and its down event while it is kept from the children.
+    private boolean mSuggestionsClosingTouch;
+    private MotionEvent mSuggestionsClosingDown;
     protected final List<AllAppsRow> mAdditionalHeaderRows = new ArrayList<>();
     protected View mBottomSheetBackground;
     protected RecyclerViewFastScroller mFastScroller;
@@ -901,13 +908,17 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             layoutBelowSearchContainer(mHeader, false /* includeTabsMargin */);
         }
 
-        // LC-Note: the suggestion tabs start where the header does, right under the search bar.
-        // They need the search bar, so they stay gone without it.
+        // LC-Note: the suggestion tabs start right where the search bar, which is centered in its
+        // container, ends, as the bar grows down to hold them. They need the search bar, so they
+        // stay gone without it.
         removeCustomRules(mSuggestionsPanel);
         if (isSearchBarFloating()) {
             alignParentTop(mSuggestionsPanel, false /* includeTabsMargin */);
-        } else {
-            layoutBelowSearchContainer(mSuggestionsPanel, false /* includeTabsMargin */);
+        } else if (mSuggestionsPanel.getLayoutParams() instanceof RelativeLayout.LayoutParams lp) {
+            lp.addRule(RelativeLayout.ALIGN_TOP, R.id.search_container_all_apps);
+            lp.topMargin = (getResources().getDimensionPixelSize(
+                    R.dimen.search_box_container_height) + getResources().getDimensionPixelSize(
+                    R.dimen.search_box_height)) / 2;
         }
     }
 
@@ -959,8 +970,11 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             mHeaderColor = headerColor;
             mTabsProtectionAlpha = tabsAlpha;
             invalidateHeader();
-            // LC-Note: the suggestion tabs continue the header protection below the search bar.
-            mSuggestionsPanel.invalidate();
+            // LC-Note: the search bar, grown to hold the suggestion tabs, continues the header
+            // protection below the search bar.
+            if (mSuggestionsPanel.isCoveringContent()) {
+                invalidate();
+            }
         }
         if (mSearchUiManager.getEditText() == null) {
             return;
@@ -1304,6 +1318,60 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                 .log(LAUNCHER_ALLAPPS_COUNT);
     }
 
+    /**
+     * LC-Note: while the suggestion tabs show, a touch anywhere outside the search bar grown to
+     * hold them closes them the moment it lands, like back: the search box loses its focus and
+     * the keyboard hides. A tap that only closes them doesn't reach the drawer under it, so it
+     * doesn't open an app there; a touch that goes on to drag is then handed to the drawer from
+     * where it started, so it scrolls the list as usual.
+     */
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        int action = ev.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            clearSuggestionsClosingTouch();
+            if (isInAllApps() && mSuggestionsPanel != null
+                    && mSuggestionsPanel.shouldCloseOnTouchDown(ev.getX(), ev.getY())) {
+                mSuggestionsClosingTouch = true;
+                mSuggestionsClosingDown = MotionEvent.obtain(ev);
+                mSearchUiManager.resetSearch();
+                return true;
+            }
+        } else if (mSuggestionsClosingTouch) {
+            boolean ends = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
+            MotionEvent down = mSuggestionsClosingDown;
+            if (down != null) {
+                if (action == MotionEvent.ACTION_MOVE && ev.getPointerCount() > 0) {
+                    float dx = ev.getX(0) - down.getX();
+                    float dy = ev.getY(0) - down.getY();
+                    int slop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
+                    if (dx * dx + dy * dy > slop * slop) {
+                        mSuggestionsClosingDown = null;
+                        super.dispatchTouchEvent(down);
+                        down.recycle();
+                        return super.dispatchTouchEvent(ev);
+                    }
+                }
+                if (ends) {
+                    clearSuggestionsClosingTouch();
+                }
+                return true;
+            }
+            if (ends) {
+                mSuggestionsClosingTouch = false;
+            }
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    private void clearSuggestionsClosingTouch() {
+        mSuggestionsClosingTouch = false;
+        if (mSuggestionsClosingDown != null) {
+            mSuggestionsClosingDown.recycle();
+            mSuggestionsClosingDown = null;
+        }
+    }
+
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
         // The AllAppsContainerView houses the QSB and is hence visible from the Workspace
@@ -1475,15 +1543,22 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
     @Override
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
-        // LC-Note: while the suggestion tabs show, the lists and the header below the search bar
-        // don't draw under them, so the tabs sit on the drawer background itself, whatever its
-        // color, opacity or blur. The tabs then draw their shadow over the lists.
-        if (mSuggestionsPanel != null && mSuggestionsPanel.isCoveringContent()) {
+        // LC-Note: while the suggestion tabs show, the search bar grows down to hold them, over
+        // the lists. The lists and the header don't draw under the grown bar, so it sits on the
+        // drawer background itself, whatever its color, opacity or blur, like the search bar does.
+        // The grown bar, with its shadow over the lists, is drawn right before the tabs, which
+        // are kept inside it, and so behind the search box.
+        if (mSuggestionsShapeShown) {
             if (child == mSuggestionsPanel) {
-                mSuggestionsPanel.drawShadow(canvas);
+                int saveCount = canvas.save();
+                mSuggestionsPanel.drawShape(canvas);
+                canvas.clipPath(mSuggestionsPanel.getShapePath());
+                boolean more = super.drawChild(canvas, child, drawingTime);
+                canvas.restoreToCount(saveCount);
+                return more;
             } else if (child != mSearchContainer && child != mBottomSheetBackground) {
                 int saveCount = canvas.save();
-                mSuggestionsPanel.clipOutCoveredArea(canvas);
+                canvas.clipOutPath(mSuggestionsPanel.getShapePath());
                 boolean more = super.drawChild(canvas, child, drawingTime);
                 canvas.restoreToCount(saveCount);
                 return more;
@@ -1494,6 +1569,8 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
+        // LC-Note: where the search bar, grown to hold the suggestion tabs, is in this frame.
+        mSuggestionsShapeShown = mSuggestionsPanel != null && mSuggestionsPanel.updateShape();
         super.dispatchDraw(canvas);
 
         if (mNavBarScrimHeight > 0) {
@@ -1842,6 +1919,16 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                     Math.round(Color.alpha(mHeaderColor) * bottomSheetBackgroundAlpha));
         }
         return mHeaderColor;
+    }
+
+    /**
+     * LC-Note: where the header protection (see {@link #drawOnScrimWithScaleAndBottomOffset})
+     * ends, in this view's coordinates. The search bar, grown to hold the suggestion tabs,
+     * continues it below.
+     */
+    public float getHeaderProtectionBottom() {
+        return getHeaderBottom() + getVisibleContainerView().getPaddingTop() - getTop()
+                - getTranslationY();
     }
 
     /**

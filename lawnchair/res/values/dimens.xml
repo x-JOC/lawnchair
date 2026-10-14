@@ -143,5 +143,7 @@
     <dimen name="drawer_suggestions_tab_text_size_max">14sp</dimen>
     <dimen name="drawer_suggestions_tab_text_size_min">11sp</dimen>
     <dimen name="drawer_suggestions_empty_padding_horizontal">24dp</dimen>
+    <!-- Room for the empty-tab message when every tab is empty, instead of a row of icons. -->
+    <dimen name="drawer_suggestions_empty_height">56dp</dimen>
 
 </resources>

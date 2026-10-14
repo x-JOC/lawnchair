@@ -60,8 +60,11 @@ import kotlinx.coroutines.launch
  * displays it stays gone.
  *
  * The header keeps one height for all tabs (enough rows for the fullest tab), so switching tabs
- * never moves the list. A new height is only applied while the drawer is off screen, because the
- * drawer resets its list padding and scrolls back to the top whenever the header height changes.
+ * never moves the list. When every tab is empty it only has room for a one-line message. A new
+ * height is only applied while the drawer is off screen, because the drawer resets its list
+ * padding and scrolls back to the top whenever the header height changes. That also drops a
+ * position kept by "remember scroll position", which is accepted: it only happens when the number
+ * of rows changes, not on every opening.
  */
 class AppSuggestionsHeaderView @JvmOverloads constructor(
     context: Context,
@@ -74,6 +77,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private val launcher: LawnchairLauncher? = context.findLawnchairLauncher()
     private val featureOn = launcher != null && isEnabledFor(context)
     private val tabBarHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_tab_bar_height)
+    private val emptyHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_empty_height)
     private val loader by lazy { AppSuggestionsLoader(context) }
 
     private lateinit var tabBar: SuggestionTabBar
@@ -87,7 +91,13 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     /** The newest suggestions, shown as soon as no launch animation is running. */
     private var latest: AppSuggestions? = null
 
-    /** Rows of icons the header is measured for; 0 until it is first shown. */
+    /** Whether the header has been sized for some suggestions; it stays gone until then. */
+    private var sized = false
+
+    /**
+     * Rows of icons the header is measured for. 0 when every tab is empty: the header then only
+     * has room for the empty-tab message.
+     */
     private var reservedRows = 0
 
     /** The height last reported to the drawer through [FloatingHeaderView.onHeightUpdated]. */
@@ -123,11 +133,11 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         header = headerView
     }
 
-    override fun getExpectedHeight(): Int = if (visibility == GONE) 0 else tabBarHeight + reservedRows * cellHeight() + paddingTop + paddingBottom
+    override fun getExpectedHeight(): Int = if (visibility == GONE) 0 else tabBarHeight + contentHeight() + paddingTop + paddingBottom
 
     override fun shouldDraw(): Boolean = visibility != GONE
 
-    override fun hasVisibleContent(): Boolean = featureOn && reservedRows > 0
+    override fun hasVisibleContent(): Boolean = featureOn && sized
 
     override fun isVisible(): Boolean = visibility == VISIBLE
 
@@ -189,6 +199,10 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         }
         launcher.stateManager.removeStateListener(stateListener)
         launcher.lifecycle.removeObserver(lifecycleObserver)
+        listOf(grid, emptyText).forEach {
+            it.animate().cancel()
+            it.alpha = 1f
+        }
     }
 
     override fun onAppsUpdated() {
@@ -268,13 +282,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         if (uiPaused) return
         if (allowHeightChange) {
             reservedRows = snapshot.rowsNeeded(dp.numShownAllAppsColumns, maxRows(dp))
+            sized = true
+            // Until the user picks a tab, open on Frequent, or on the first tab with apps. Not
+            // while the drawer is on screen, so the tab doesn't change under the user.
+            if (lastPickedTab == null) selectedTab = snapshot.firstNonEmptyTab(SuggestionTab.FREQUENT)
         }
-        if (reservedRows == 0) return
-        // Until the user picks a tab, open on Frequent, or on the first tab with apps. Not while
-        // the drawer is on screen, so the tab doesn't change under the user.
-        if (lastPickedTab == null && allowHeightChange) {
-            selectedTab = snapshot.firstNonEmptyTab(SuggestionTab.FREQUENT)
-        }
+        if (!sized) return
         if (visibility == GONE) visibility = VISIBLE
         bindSelectedTab(animate = false)
         val height = getExpectedHeight()
@@ -296,23 +309,28 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         bindSelectedTab(animate = true)
     }
 
+    /** Shows the selected tab's apps, or its empty-tab message. [animate] for a tab the user picked. */
     private fun bindSelectedTab(animate: Boolean) {
         val snapshot = latest ?: return
         val columns = launcher?.deviceProfile?.numShownAllAppsColumns ?: return
-        val apps = snapshot.appsFor(selectedTab).take(columns * reservedRows)
+        val tabApps = snapshot.appsFor(selectedTab)
         tabBar.select(selectedTab, animate)
-        grid.bind(apps, columns, reservedRows)
+        grid.bind(tabApps.take(columns * reservedRows), columns, reservedRows)
 
-        val isEmpty = apps.isEmpty()
-        emptyText.isVisible = isEmpty
+        // The message only for a tab that really has no apps. A tab whose first apps arrive while
+        // the drawer is open has no rows for them yet, and stays blank until the header grows.
+        val isEmpty = tabApps.isEmpty()
+        // TalkBack reads the message when the user switches to an empty tab, but not when the
+        // header is updated in the background, for example while the drawer is closed.
+        emptyText.accessibilityLiveRegion = if (animate) ACCESSIBILITY_LIVE_REGION_POLITE else ACCESSIBILITY_LIVE_REGION_NONE
         if (isEmpty) {
             val textRes = emptyTextFor(selectedTab)
-            // Only on a change: the text is a live region, and TalkBack reads every update.
             if (textRes != emptyTextRes) {
                 emptyTextRes = textRes
                 emptyText.setText(textRes)
             }
         }
+        emptyText.isVisible = isEmpty
 
         val shown: View = if (isEmpty) emptyText else grid
         shown.animate().cancel()
@@ -364,6 +382,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     }
 
     private fun cellHeight(): Int = launcher?.deviceProfile?.allAppsProfile?.cellHeightPx ?: 0
+
+    /** Height below the tabs: the rows of icons, or one line for the message if every tab is empty. */
+    private fun contentHeight(): Int = if (reservedRows > 0) reservedRows * cellHeight() else emptyHeight
 
     private val stateListener = object : StateManager.StateListener<LauncherState> {
         override fun onStateTransitionStart(toState: LauncherState) {
@@ -446,10 +467,11 @@ internal fun Context.findLawnchairLauncher(): LawnchairLauncher? {
 }
 
 /**
- * Rows of icons for the fullest tab, between 1 (room for the empty-tab message) and [maxRows], so
- * the header keeps one height whichever tab is selected.
+ * Rows of icons for the fullest tab, at most [maxRows], so the header keeps one height whichever
+ * tab is selected. 0 when every tab is empty.
  */
 internal fun AppSuggestions.rowsNeeded(columns: Int, maxRows: Int): Int {
     val mostApps = SuggestionTab.entries.maxOf { appsFor(it).size }
-    return ((mostApps + columns - 1) / columns.coerceAtLeast(1)).coerceIn(1, maxRows)
+    val perRow = columns.coerceAtLeast(1)
+    return ((mostApps + perRow - 1) / perRow).coerceIn(0, maxRows)
 }

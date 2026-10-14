@@ -44,6 +44,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -206,7 +207,8 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     }
 
     override fun onAppsUpdated() {
-        refresh()
+        // The app list changes in bursts, for example at every progress step of an install.
+        refresh(debounce = true)
     }
 
     override fun onDeviceProfileChanged(dp: DeviceProfile) {
@@ -245,16 +247,21 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     // Data
 
-    private fun refresh() {
+    /**
+     * Loads the suggestions again and shows them. With [debounce], waits for [REFRESH_DEBOUNCE_MS]
+     * first, so a burst of calls loads once; any newer call replaces a pending or running load.
+     */
+    private fun refresh(debounce: Boolean = false) {
         val launcher = launcher ?: return
         val currentScope = scope ?: return
-        val apps = launcher.appsView?.appsStore?.apps ?: return
-        // Empty until the app model has loaded; onAppsUpdated() comes back here then.
-        if (apps.isEmpty()) return
-        val dp = launcher.deviceProfile
-        val limit = dp.numShownAllAppsColumns * maxRows(dp)
         refreshJob?.cancel()
         refreshJob = currentScope.launch {
+            if (debounce) delay(REFRESH_DEBOUNCE_MS)
+            val apps = launcher.appsView?.appsStore?.apps ?: return@launch
+            // Empty until the app model has loaded; onAppsUpdated() comes back here then.
+            if (apps.isEmpty()) return@launch
+            val dp = launcher.deviceProfile
+            val limit = dp.numShownAllAppsColumns * maxRows(dp)
             val snapshot = try {
                 loader.load(apps, limit)
             } catch (e: CancellationException) {
@@ -428,6 +435,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
         /** Longer than any launch animation; see [setUiUpdatesPaused]. */
         private const val MAX_UI_PAUSE_MS = 2000L
+
+        /** See [refresh]. */
+        private const val REFRESH_DEBOUNCE_MS = 300L
 
         /** The tab the user picked last. Kept for the whole process, so it survives the launcher being recreated. */
         private var lastPickedTab: SuggestionTab? = null

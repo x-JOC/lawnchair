@@ -96,6 +96,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private var resizeOnNextLoad = false
 
     private var uiPaused = false
+    private val resumeUiUpdates = Runnable { setUiUpdatesPaused(false) }
     private var selectedTab = lastPickedTab ?: SuggestionTab.FREQUENT
 
     @StringRes
@@ -173,6 +174,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         val launcher = launcher?.takeIf { featureOn } ?: return
+        removeCallbacks(resumeUiUpdates)
         scope?.cancel()
         scope = null
         refreshJob = null
@@ -201,11 +203,26 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     /**
      * Pauses updates while an app opens, so the icon being launched doesn't change or move under
-     * the launch animation. Called by [LawnchairLauncher.startActivitySafely].
+     * the launch animation. Called by [LawnchairLauncher.startActivitySafely], which resumes them
+     * when the launch animation ends.
+     *
+     * That end callback doesn't come for every launch: without a launch animation (animations off,
+     * or no remote transition, which is the case when Lawnchair isn't the recents provider) it is
+     * never run. So a pause also ends after [MAX_UI_PAUSE_MS], when the launcher stops, and when the
+     * drawer starts to open, whichever comes first.
      */
     fun setUiUpdatesPaused(paused: Boolean) {
+        removeCallbacks(resumeUiUpdates)
+        if (paused) postDelayed(resumeUiUpdates, MAX_UI_PAUSE_MS)
+        if (uiPaused == paused) return
         uiPaused = paused
         if (!paused) showLatest(allowHeightChange = !isDrawerOnScreen())
+    }
+
+    /** Ends a pause from [setUiUpdatesPaused] without showing anything; the caller does. */
+    private fun clearUiPause() {
+        removeCallbacks(resumeUiUpdates)
+        uiPaused = false
     }
 
     // Data
@@ -349,6 +366,8 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         override fun onStateTransitionStart(toState: LauncherState) {
             if (toState == LauncherState.ALL_APPS) {
                 applyColors()
+                // Any launch that paused the updates is over by the time the drawer opens again.
+                clearUiPause()
                 // The drawer is only starting to open and its list is at the top, so a new height
                 // doesn't move anything the user is looking at.
                 showLatest(allowHeightChange = true)
@@ -363,6 +382,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     private val lifecycleObserver = object : DefaultLifecycleObserver {
         override fun onStop(owner: LifecycleOwner) {
+            // The opened app now covers the launcher, so its launch no longer needs the pause,
+            // and the header may change height while nobody sees it.
+            clearUiPause()
             showLatest(allowHeightChange = true)
         }
     }
@@ -371,6 +393,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         private const val TAG = "AppSuggestionsHeader"
         private const val TAB_FADE_DURATION_MS = 150L
         private const val UNSELECTED_TEXT_ALPHA = 0.7f
+
+        /** Longer than any launch animation; see [setUiUpdatesPaused]. */
+        private const val MAX_UI_PAUSE_MS = 2000L
 
         /** The tab the user picked last. Kept for the whole process, so it survives the launcher being recreated. */
         private var lastPickedTab: SuggestionTab? = null

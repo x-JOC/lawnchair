@@ -21,6 +21,8 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -51,6 +53,7 @@ import app.lawnchair.qsb.LawnQsbUi
 import app.lawnchair.qsb.QsbActions
 import app.lawnchair.qsb.QsbIconId
 import app.lawnchair.qsb.buildQsbStyle
+import app.lawnchair.qsb.getHotseatQsbCornerRadius
 import app.lawnchair.qsb.providers.Google
 import app.lawnchair.qsb.providers.PixelSearch
 import app.lawnchair.qsb.rememberAllAppsQsbState
@@ -106,6 +109,13 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     private var focusedResultTitle = ""
     private var canShowHint = false
     private var queryEmpty by mutableStateOf(true)
+
+    /**
+     * Whether the drawer's suggestion tabs draw this bar's background, as the top of the bar they
+     * grow it into ([AppSuggestionsHeaderView]). The bar's own background stays clear meanwhile,
+     * so the two never add up, and is back as it should be the moment they hand it back.
+     */
+    private var barTakenOver by mutableStateOf(false)
 
     private var bgAlphaState by mutableFloatStateOf(1f)
     private val supportBlur = BlurUtils.supportsBlursOnWindows()
@@ -183,15 +193,17 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                     showLens = lensIntent != null,
                 )
 
-                val backgroundColor = if (supportBlur) {
-                    ColorTokens.SearchboxHighlightBlur.resolveColor(context)
-                } else {
-                    ColorTokens.SearchboxHighlight.resolveColor(context)
-                }
+                val backgroundColor = barFillColor()
 
-                val backgroundAlpha by animateIntAsState(
+                // While the suggestion tabs draw the background, changes jump to their end, so
+                // the bar's own background is right when the tabs hand it back.
+                val takenOver = barTakenOver
+                val ownBackgroundAlpha by animateIntAsState(
                     if (isFocused || !queryEmpty) 0 else 100,
+                    animationSpec = if (takenOver) snap() else spring(visibilityThreshold = 1),
+                    label = "searchBarBackgroundAlpha",
                 )
+                val backgroundAlpha = if (takenOver) 0 else ownBackgroundAlpha
 
                 // Ignore other theme attributes to preserve existing behavior
                 val style = buildQsbStyle(
@@ -199,7 +211,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                     themed = themedQsb,
                     backgroundColor = backgroundColor,
                     backgroundAlpha = backgroundAlpha,
-                    cornerRadius = 1f,
+                    cornerRadius = BAR_CORNER_RADIUS_FACTOR,
                     strokeColor = null,
                     strokeWidth = 0f,
                 )
@@ -379,6 +391,33 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
 
     /** The drawer's suggestion tabs, which show while the search box is in use. */
     private fun suggestionsPanel(): AppSuggestionsHeaderView? = if (::appsView.isInitialized) appsView.suggestionsPanel else null
+
+    /** The search bar itself, inside this view's padding, which the suggestion tabs grow. */
+    val barView: View
+        get() = qsbShell
+
+    /** The search bar's fill color, before its background alpha. */
+    fun barFillColor(): Int = if (supportBlur) {
+        ColorTokens.SearchboxHighlightBlur.resolveColor(context)
+    } else {
+        ColorTokens.SearchboxHighlight.resolveColor(context)
+    }
+
+    /** The radius of the search bar's corners. */
+    fun barCornerRadius(): Float = getHotseatQsbCornerRadius(context, BAR_CORNER_RADIUS_FACTOR)
+
+    /** This view's left padding while the search box has focus, when the bar is wider. */
+    val focusedBarPaddingLeft: Int
+        get() = initialPaddingLeft / 2
+
+    /** This view's right padding while the search box has focus, when the bar is wider. */
+    val focusedBarPaddingRight: Int
+        get() = initialPaddingRight / 2
+
+    /** See [barTakenOver]. Called by the suggestion tabs. */
+    fun setBarBackgroundTakenOver(takenOver: Boolean) {
+        barTakenOver = takenOver
+    }
 
     /**
      * With the suggestion tabs on, tapping the empty box keeps the drawer on screen, so the
@@ -608,5 +647,10 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
         setupPadding()
         invalidate()
         requestLayout()
+    }
+
+    private companion object {
+        /** The bar's corners are fully rounded. */
+        const val BAR_CORNER_RADIUS_FACTOR = 1f
     }
 }

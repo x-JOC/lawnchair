@@ -15,16 +15,18 @@
   ~ limitations under the License.
   -->
 
-<!-- Frequent / Recent / New or updated apps, drawn over the app drawer's lists right under the
-     search bar while the search box is in use (ActivityAllAppsContainerView adds it). Stays gone
-     outside the launcher's own drawer (taskbar, secondary displays). -->
+<!-- Frequent / Recent / New or updated apps, shown while the search box is in use inside the
+     search bar, which grows down over the app drawer's lists to hold them
+     (ActivityAllAppsContainerView adds it right under the bar and draws the grown bar). Stays
+     gone outside the launcher's own drawer (taskbar, secondary displays). The top padding, for
+     the hairline under the search row, is set in code. -->
 <app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/app_suggestions_header"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:importantForAccessibility="yes"
     android:orientation="vertical"
-    android:paddingBottom="@dimen/drawer_suggestions_panel_padding_bottom"
+    android:paddingBottom="@dimen/drawer_suggestions_padding_bottom"
     android:visibility="gone">
 
     <app.lawnchair.allapps.suggestions.SuggestionTabBar
@@ -51,17 +53,21 @@
             android:text="@string/drawer_suggestions_tab_new" />
     </app.lawnchair.allapps.suggestions.SuggestionTabBar>
 
-    <!-- Fills the rest of the panel, which is measured to exactly the rows it needs. -->
+    <!-- Fills the rest of the panel, which is measured to exactly the rows it needs. Icons may
+         drop in from just above it as the bar grows. -->
     <FrameLayout
         android:id="@+id/suggestion_content"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:clipChildren="false"
+        android:paddingTop="@dimen/drawer_suggestions_content_padding_top">
 
         <app.lawnchair.allapps.suggestions.SuggestionIconGrid
             android:id="@+id/suggestion_grid"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:clipChildren="false" />
 
         <TextView
             android:id="@+id/suggestion_empty"

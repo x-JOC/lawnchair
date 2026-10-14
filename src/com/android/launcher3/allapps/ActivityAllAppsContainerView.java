@@ -56,6 +56,7 @@ import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.WindowInsets;
@@ -187,6 +188,10 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     protected AppSuggestionsHeaderView mSuggestionsPanel;
     // LC-Note: whether the grown search bar shows in the frame being drawn.
     private boolean mSuggestionsShapeShown;
+    // LC-Note: a touch that closed the suggestion tabs as it landed outside the grown search bar
+    // (see dispatchTouchEvent), and its down event while it is kept from the children.
+    private boolean mSuggestionsClosingTouch;
+    private MotionEvent mSuggestionsClosingDown;
     protected final List<AllAppsRow> mAdditionalHeaderRows = new ArrayList<>();
     protected View mBottomSheetBackground;
     protected RecyclerViewFastScroller mFastScroller;
@@ -1311,6 +1316,60 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         mActivityContext.getStatsLogManager().logger()
                 .withCardinality(mAllAppsStore.getApps().length)
                 .log(LAUNCHER_ALLAPPS_COUNT);
+    }
+
+    /**
+     * LC-Note: while the suggestion tabs show, a touch anywhere outside the search bar grown to
+     * hold them closes them the moment it lands, like back: the search box loses its focus and
+     * the keyboard hides. A tap that only closes them doesn't reach the drawer under it, so it
+     * doesn't open an app there; a touch that goes on to drag is then handed to the drawer from
+     * where it started, so it scrolls the list as usual.
+     */
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        int action = ev.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            clearSuggestionsClosingTouch();
+            if (isInAllApps() && mSuggestionsPanel != null
+                    && mSuggestionsPanel.shouldCloseOnTouchDown(ev.getX(), ev.getY())) {
+                mSuggestionsClosingTouch = true;
+                mSuggestionsClosingDown = MotionEvent.obtain(ev);
+                mSearchUiManager.resetSearch();
+                return true;
+            }
+        } else if (mSuggestionsClosingTouch) {
+            boolean ends = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
+            MotionEvent down = mSuggestionsClosingDown;
+            if (down != null) {
+                if (action == MotionEvent.ACTION_MOVE && ev.getPointerCount() > 0) {
+                    float dx = ev.getX(0) - down.getX();
+                    float dy = ev.getY(0) - down.getY();
+                    int slop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
+                    if (dx * dx + dy * dy > slop * slop) {
+                        mSuggestionsClosingDown = null;
+                        super.dispatchTouchEvent(down);
+                        down.recycle();
+                        return super.dispatchTouchEvent(ev);
+                    }
+                }
+                if (ends) {
+                    clearSuggestionsClosingTouch();
+                }
+                return true;
+            }
+            if (ends) {
+                mSuggestionsClosingTouch = false;
+            }
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    private void clearSuggestionsClosingTouch() {
+        mSuggestionsClosingTouch = false;
+        if (mSuggestionsClosingDown != null) {
+            mSuggestionsClosingDown.recycle();
+            mSuggestionsClosingDown = null;
+        }
     }
 
     @Override

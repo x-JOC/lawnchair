@@ -71,14 +71,15 @@ import kotlinx.coroutines.launch
  * of the drawer's own icons, shown inside the search bar, which grows down to hold them.
  *
  * It shows while the search box is in use with an empty query ([setSearchBoxState]): from a tap
- * on the search box until the user types, scrolls the list or leaves search. The search bar and
- * this view then make one shape, the grown bar: the search row as it was, a hairline, the tabs
- * and the icons, filled with the bar's own color, with the bar's corner radius at the bottom too
- * and a soft shadow under it. [ActivityAllAppsContainerView] adds this view right under the bar,
- * draws the grown bar behind it ([updateShape], [drawShape]) and keeps the lists and the header
- * from drawing under the bar, which is drawn over the A-Z list: the list never moves for it.
- * Meanwhile the bar's own background stays clear ([AllAppsSearchInput.setBarBackgroundTakenOver]).
- * It only shows in the launcher's own drawer: in the taskbar and on other displays it stays gone.
+ * on the search box until the user types, touches anything outside it, scrolls the list or leaves
+ * search. The search bar and this view then make one shape, the grown bar: the search row as it
+ * was, a hairline, the tabs and the icons, filled with the bar's own color, with the bar's corner
+ * radius at the bottom too and a soft shadow under it. [ActivityAllAppsContainerView] adds this
+ * view right under the bar, draws the grown bar behind it ([updateShape], [drawShape]) and keeps
+ * the lists and the header from drawing under the bar, which is drawn over the A-Z list: the list
+ * never moves for it. Meanwhile the bar's own background stays clear
+ * ([AllAppsSearchInput.setBarBackgroundTakenOver]). It only shows in the launcher's own drawer: in
+ * the taskbar and on other displays it stays gone.
  *
  * The panel keeps one height for all tabs (enough rows for the fullest tab), so switching tabs
  * never changes it. When every tab is empty it only has room for a one-line message. A new number
@@ -255,14 +256,27 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         return true
     }
 
-    /** Whether ([x], [y]), in the parent's coordinates, is on the grown bar. */
-    fun coversPoint(x: Float, y: Float): Boolean = updateShape() && shapeContains(x, y)
+    /**
+     * Whether ([x], [y]), in the parent's coordinates, is on the grown bar. While it grows, that
+     * is where it is growing to, so a quick tap on a tab or an icon that is still on its way in
+     * isn't taken for one outside it.
+     */
+    fun coversPoint(x: Float, y: Float): Boolean = updateShape() && shapeContains(x, y, grown = showing)
 
-    private fun shapeContains(x: Float, y: Float): Boolean {
-        if (!shapeRect.contains(x, y)) return false
+    /**
+     * Whether a touch that lands at ([x], [y]), in the parent's coordinates, closes the panel: it
+     * shows, or is showing, and the touch is outside the grown bar. See
+     * [ActivityAllAppsContainerView.dispatchTouchEvent].
+     */
+    fun shouldCloseOnTouchDown(x: Float, y: Float): Boolean = showing && updateShape() && !shapeContains(x, y, grown = true)
+
+    /** Whether the bar, as it is now or once fully [grown], covers ([x], [y]). */
+    private fun shapeContains(x: Float, y: Float, grown: Boolean): Boolean {
+        val bottom = if (grown) max(shapeRect.bottom, top + translationY + height) else shapeRect.bottom
+        if (x < shapeRect.left || x >= shapeRect.right || y < shapeRect.top || y >= bottom) return false
         val r = shapeRadius
         val dx = x - x.coerceIn(shapeRect.left + r, shapeRect.right - r)
-        val dy = y - y.coerceIn(shapeRect.top + r, shapeRect.bottom - r)
+        val dy = y - y.coerceIn(shapeRect.top + r, bottom - r)
         return dx * dx + dy * dy <= r * r
     }
 
@@ -509,8 +523,8 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     /**
      * Shows the panel while the search box is [focused] and the query is empty: on a tap on the
      * search box (the drawer stays, with the keyboard up), and when the query is cleared. Typing,
-     * dragging the list (which takes the focus) and leaving search hide it. Called by the search
-     * box; closing the drawer hides it here too.
+     * a touch outside the grown bar, dragging the list (which takes the focus) and leaving search
+     * hide it. Called by the search box; closing the drawer hides it here too.
      */
     fun setSearchBoxState(focused: Boolean, queryEmpty: Boolean) {
         if (!featureOn) return

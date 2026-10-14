@@ -223,20 +223,19 @@
         <item name="folderCellWidth">58dp</item>
     </style>
 
-    <!-- One of the Frequent / Recent / New tabs at the top of the app drawer. Its padding is the
-         space around the label inside the selection pill, which fills the tab's height between
-         the top and bottom padding. SuggestionTabBar sets the text size and the width in code, so
-         all three labels share one size. -->
+    <!-- One of the Frequent / Recent / New tabs at the top of the app drawer. Its side padding is
+         the space around the label inside the selection pill. SuggestionTabBar sets the text
+         size and the width in code, so all three labels share one size, and the vertical padding
+         and gravity for the selected tab's indicator. -->
     <style name="DrawerSuggestionTab">
         <!-- As wide as the label and its pill padding, plus an equal share of the space left. -->
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">match_parent</item>
         <item name="android:layout_weight">1</item>
-        <item name="android:gravity">center</item>
         <item name="android:paddingStart">@dimen/drawer_suggestions_pill_padding_horizontal</item>
         <item name="android:paddingEnd">@dimen/drawer_suggestions_pill_padding_horizontal</item>
-        <item name="android:paddingTop">@dimen/drawer_suggestions_pill_inset_top</item>
-        <item name="android:paddingBottom">@dimen/drawer_suggestions_pill_inset_bottom</item>
+        <!-- So the line can sit right under the label. -->
+        <item name="android:includeFontPadding">false</item>
         <item name="android:maxLines">1</item>
         <item name="android:ellipsize">end</item>
         <item name="android:letterSpacing">0.01</item>

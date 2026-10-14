@@ -129,25 +129,43 @@
     <dimen name="aspect_ratio_portrait">1</dimen>
     <dimen name="aspect_ratio_portrait_and_square">1.05</dimen>
 
-    <!-- App drawer suggestion tabs (AppSuggestionsHeaderView). The rows of icons below the tabs
-         use the drawer's own cell height. -->
-    <dimen name="drawer_suggestions_tab_bar_height">40dp</dimen>
-    <!-- The selection pill fills the tab bar's height minus these insets (32dp), sitting a little
-         low so that it is about as far from the search bar as from the icons below. -->
-    <dimen name="drawer_suggestions_pill_inset_top">6dp</dimen>
+    <!-- App drawer suggestion tabs (AppSuggestionsHeaderView). The tab bar is as tall as its
+         labels and indicator need, but no shorter than these, so it grows with the font size. -->
+    <dimen name="drawer_suggestions_tab_bar_min_height_line">30dp</dimen>
+    <dimen name="drawer_suggestions_tab_bar_min_height_pill">36dp</dimen>
+    <!-- With the line, the labels sit at the bottom of the bar, at least this far from its top. -->
+    <dimen name="drawer_suggestions_label_top_room">4dp</dimen>
+    <!-- The selection pill fills the tab bar's height minus these insets, sitting a little low so
+         that it is about as far from the search bar as from the icons below. -->
+    <dimen name="drawer_suggestions_pill_inset_top">4dp</dimen>
     <dimen name="drawer_suggestions_pill_inset_bottom">2dp</dimen>
+    <!-- Least space between the label and the pill's top and bottom. -->
+    <dimen name="drawer_suggestions_pill_padding_vertical">6dp</dimen>
     <!-- Space between the label and the pill's ends, as in Lawnchair's settings chips. -->
     <dimen name="drawer_suggestions_pill_padding_horizontal">14dp</dimen>
     <dimen name="drawer_suggestions_pill_min_width">48dp</dimen>
     <dimen name="drawer_suggestions_pill_min_gap">8dp</dimen>
     <!-- The line under the selected tab (the default indicator): as wide as the label, at least
-         the min width, at the bottom of the area the pill would take. -->
+         the min width, a small gap below the label (below its descent, so clear of Arabic
+         letters that go below the line), with a little room under it. -->
     <dimen name="drawer_suggestions_line_height">3dp</dimen>
+    <dimen name="drawer_suggestions_line_gap">3dp</dimen>
+    <dimen name="drawer_suggestions_line_bottom_inset">2dp</dimen>
     <dimen name="drawer_suggestions_line_min_width">24dp</dimen>
     <dimen name="drawer_suggestions_tab_text_size_max">14sp</dimen>
     <dimen name="drawer_suggestions_tab_text_size_min">11sp</dimen>
     <dimen name="drawer_suggestions_empty_padding_horizontal">24dp</dimen>
     <!-- Room for the empty-tab message when every tab is empty, instead of a row of icons. -->
     <dimen name="drawer_suggestions_empty_height">44dp</dimen>
+    <!-- Space above and below an icon and its label in the panel's rows, which are shorter than
+         the drawer's own cells. -->
+    <dimen name="drawer_suggestions_row_padding_vertical">6dp</dimen>
+    <dimen name="drawer_suggestions_panel_padding_bottom">4dp</dimen>
+    <!-- The panel's rounded bottom corners, and the soft shadow it casts on the list below. -->
+    <dimen name="drawer_suggestions_panel_corner_radius">20dp</dimen>
+    <dimen name="drawer_suggestions_panel_shadow_height">10dp</dimen>
+    <!-- How far the panel's content and icons slide down into place as the panel opens. -->
+    <dimen name="drawer_suggestions_content_slide">12dp</dimen>
+    <dimen name="drawer_suggestions_icon_entrance_drop">8dp</dimen>
 
 </resources>

@@ -38,7 +38,6 @@ import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.RecyclerView
 import app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView
 import app.lawnchair.launcher
 import app.lawnchair.preferences.PreferenceManager
@@ -292,15 +291,14 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                     ensureKeyboardWithSuggestionTabs()
                 }
 
-                suggestionsHeader()?.setSearchSessionActive(true)
+                suggestionsPanel()?.setSearchBoxState(focused = true, queryEmpty = input.text.isNullOrEmpty())
                 setBackgroundVisibility(false, 0f)
                 animateHintVisibility(true)
                 animatePadding(currentPaddingLeft / 2, currentPaddingRight / 2)
             } else {
-                // Dragging a list takes the focus (AllAppsRecyclerView) without leaving search:
-                // keep the suggestion tabs then, rather than resizing the header mid-scroll. They
-                // go when the drawer closes.
-                if (!isDraggingList()) suggestionsHeader()?.setSearchSessionActive(false)
+                // Also when dragging the list takes the focus (AllAppsRecyclerView): the tabs
+                // would cover its top.
+                suggestionsPanel()?.setSearchBoxState(focused = false, queryEmpty = input.text.isNullOrEmpty())
                 setBackgroundVisibility(true, 1f)
                 animateHintVisibility(false)
                 // Not with the suggestion tabs on: the history is only shown on the search page
@@ -344,6 +342,9 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                     animatePadding(currentPaddingLeft, currentPaddingRight)
                 }
                 queryEmpty = isEmpty
+                // Typing hides the suggestion tabs for the results; clearing the query brings them
+                // back. A reset leaves search, which the focus change handles.
+                suggestionsPanel()?.setSearchBoxState(focused = input.hasFocus() && !input.isResetting, queryEmpty = isEmpty)
             },
         )
 
@@ -377,13 +378,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     }
 
     /** The drawer's suggestion tabs, which show while the search box is in use. */
-    private fun suggestionsHeader(): AppSuggestionsHeaderView? {
-        if (!::appsView.isInitialized) return null
-        return appsView.floatingHeaderView?.findFixedRowByType(AppSuggestionsHeaderView::class.java)
-    }
-
-    private fun isDraggingList(): Boolean = ::appsView.isInitialized &&
-        appsView.activeRecyclerView?.scrollState == RecyclerView.SCROLL_STATE_DRAGGING
+    private fun suggestionsPanel(): AppSuggestionsHeaderView? = if (::appsView.isInitialized) appsView.suggestionsPanel else null
 
     /**
      * With the suggestion tabs on, tapping the empty box keeps the drawer on screen, so the

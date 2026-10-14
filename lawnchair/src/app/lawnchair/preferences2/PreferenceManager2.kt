@@ -456,11 +456,6 @@ class PreferenceManager2 @Inject constructor(
         onSet = { reloadHelper.recreate() },
     )
 
-    val showSuggestedAppsInSearch = preference(
-        key = booleanPreferencesKey(name = "show_suggested_apps_in_search"),
-        defaultValue = context.resources.getBoolean(R.bool.config_default_show_suggested_apps_in_search),
-    )
-
     /** Frequent, recent and new or updated app tabs at the top of the app drawer. */
     val drawerSuggestionTabs = preference(
         key = booleanPreferencesKey(name = "drawer_suggestion_tabs"),

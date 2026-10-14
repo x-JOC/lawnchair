@@ -54,7 +54,6 @@ import app.lawnchair.qsb.providers.PixelSearch
 import app.lawnchair.qsb.rememberAllAppsQsbState
 import app.lawnchair.search.LawnchairRecentSuggestionProvider
 import app.lawnchair.search.algorithms.LawnchairSearchAlgorithm
-import app.lawnchair.search.algorithms.engine.SuggestionTab
 import app.lawnchair.theme.color.tokens.ColorTokens
 import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.util.ProvideLifecycleState
@@ -304,7 +303,6 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                 focusedResultTitle = ""
                 input.setHint("")
                 hint.text = ""
-                searchAlgorithm?.invalidateSuggestionCache()
             }
 
             if (::appsView.isInitialized) {
@@ -459,12 +457,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     }
 
     override fun onAppsUpdated() {
-        searchAlgorithm?.invalidateSuggestionCache()
         searchBarController.refreshSearchResult()
-    }
-
-    fun selectSuggestionTab(tab: SuggestionTab) {
-        searchAlgorithm?.selectSuggestionTab(tab, this)
     }
 
     override fun initializeSearch(appsView: ActivityAllAppsContainerView<*>) {

@@ -1,16 +1,15 @@
-package app.lawnchair.search.algorithms.engine.provider.apps
+package app.lawnchair.allapps.suggestions
 
 import android.content.Context
 import android.os.Process
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
-import app.lawnchair.search.algorithms.engine.SuggestionTab
 import com.android.launcher3.model.data.AppInfo
 import com.android.launcher3.model.data.ItemInfoWithIcon
 
 /**
- * Immutable snapshot of the three zero-state suggestion lists. A single value so it can be cached
- * and swapped atomically. [launchRevision] is the [AppLaunchStore.revision] it was computed from.
+ * Immutable snapshot of the three suggestion lists. A single value so it can be cached and swapped
+ * atomically. [launchRevision] is the [AppLaunchStore.revision] it was computed from.
  */
 data class AppSuggestions(
     val byTab: Map<SuggestionTab, List<AppInfo>>,
@@ -26,7 +25,7 @@ data class AppSuggestions(
 }
 
 /**
- * Gathers the data for the zero-state app suggestions and hands it to the pure
+ * Gathers the data for the app drawer's suggestion tabs and hands it to the pure
  * [AppSuggestionRanker]. None of the tabs needs a permission:
  *  - [SuggestionTab.FREQUENT]: apps launched most often from Lawnchair, recent launches weighing more.
  *  - [SuggestionTab.RECENT]: apps launched most recently from Lawnchair.
@@ -34,7 +33,7 @@ data class AppSuggestions(
  *
  * Launches come from [AppLaunchStore]. All work is blocking (file and package-manager reads) and
  * must run on a background thread. It does not touch the app model, so it should not run on the
- * model executor either: callers pass a copy of the app list.
+ * model executor either: callers pass the drawer's app list (AllAppsStore).
  */
 object SuggestedAppsProvider {
 
@@ -58,15 +57,16 @@ object SuggestedAppsProvider {
         // snapshot look stale rather than up to date.
         val revision = launchStore.revision
 
-        // Hidden apps never appear here, whatever "show hidden apps in search" says: that setting
-        // is about matching a typed query, and nothing has been typed yet.
+        // Hidden apps never appear here, as in the rest of the drawer. "Show hidden apps in search"
+        // only applies to typed searches.
         val hiddenApps = PreferenceManager2.getInstance(context).hiddenApps.firstCached()
         val ownPackage = context.packageName
         val currentUser = Process.myUserHandle()
 
-        // The AppInfo objects still belong to the model. Of the fields read here, only the status
-        // flags can change meanwhile (an app being installed or updated), and a stale read only
-        // moves that app in or out of the tabs until the next load.
+        // The drawer's AppInfo objects are replaced rather than changed when apps change. Of the
+        // fields read here, only the status flags could change meanwhile (an app being installed
+        // or updated), and a stale read only moves that app in or out of the tabs until the next
+        // load.
         val byKey = LinkedHashMap<String, AppInfo>()
         apps.forEach { app ->
             // Only the current user's apps: work and private-space apps stay out of the

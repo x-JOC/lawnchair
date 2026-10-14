@@ -18,7 +18,6 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.Accessibilit
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.CollectionInfoCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.CollectionItemInfoCompat
 import app.lawnchair.font.FontManager
-import app.lawnchair.search.algorithms.engine.SuggestionTab
 import com.android.app.animation.Interpolators
 import com.android.launcher3.R
 import com.android.launcher3.Utilities

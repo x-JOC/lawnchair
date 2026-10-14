@@ -3,10 +3,6 @@ package app.lawnchair.allapps.suggestions
 import android.content.Context
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
-import app.lawnchair.search.algorithms.engine.provider.apps.AppLaunchStore
-import app.lawnchair.search.algorithms.engine.provider.apps.AppSuggestionRanker
-import app.lawnchair.search.algorithms.engine.provider.apps.AppSuggestions
-import app.lawnchair.search.algorithms.engine.provider.apps.SuggestedAppsProvider
 import com.android.launcher3.model.data.AppInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

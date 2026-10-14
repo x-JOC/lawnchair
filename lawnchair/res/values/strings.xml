@@ -958,16 +958,6 @@
 
     <string name="show_suggested_apps_at_drawer_top">Show suggested apps at the top of the drawer</string>
 
-    <string name="search_suggested_frequent_title">Frequent</string>
-    <string name="search_suggested_recent_title">Recent</string>
-    <string name="search_suggested_new_title">New/Updated</string>
-    <string name="search_pref_suggested_apps_title">Suggestion tabs in search</string>
-    <string name="search_pref_suggested_apps_description">Show your most used, recently opened, and new or updated apps when the search box is empty</string>
-    <string name="search_suggested_empty_launches">Apps you open from Lawnchair will show up here</string>
-    <string name="search_suggested_empty_new">No apps installed or updated in the last 30 days</string>
-    <!-- Accessibility role read out for each of the suggestion tabs, e.g. "Recent, selected, Tab". -->
-    <string name="search_suggested_tab_role">Tab</string>
-
     <!-- App drawer suggestion tabs: frequent, recent and new or updated apps above the app list. -->
     <string name="drawer_suggestions_tab_frequent">Frequent</string>
     <string name="drawer_suggestions_tab_recent">Recent</string>

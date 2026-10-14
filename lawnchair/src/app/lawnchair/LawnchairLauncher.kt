@@ -32,6 +32,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.LawnchairApp.Companion.showQuickstepWarningIfNecessary
+import app.lawnchair.allapps.suggestions.AppLaunchStore
 import app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView
 import app.lawnchair.compat.LawnchairQuickstepCompat
 import app.lawnchair.data.AppDatabase
@@ -46,7 +47,6 @@ import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.root.RootHelperManager
 import app.lawnchair.root.RootNotAvailableException
-import app.lawnchair.search.algorithms.engine.provider.apps.AppLaunchStore
 import app.lawnchair.theme.ThemeProvider
 import app.lawnchair.ui.popup.LauncherOptionsPopup
 import app.lawnchair.ui.popup.LawnchairShortcut

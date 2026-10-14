@@ -21,9 +21,6 @@ import app.lawnchair.LawnchairLauncher
 import app.lawnchair.font.FontManager
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
-import app.lawnchair.search.algorithms.engine.SuggestionTab
-import app.lawnchair.search.algorithms.engine.provider.apps.AppLaunchStore
-import app.lawnchair.search.algorithms.engine.provider.apps.AppSuggestions
 import app.lawnchair.theme.color.tokens.AllAppsTabColors
 import app.lawnchair.util.shouldUseAlternateAllAppsTextColor
 import com.android.app.animation.Interpolators

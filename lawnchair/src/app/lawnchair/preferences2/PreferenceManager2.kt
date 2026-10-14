@@ -28,6 +28,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import app.lawnchair.allapps.suggestions.SuggestionTabIndicator
 import app.lawnchair.data.Converters
 import app.lawnchair.font.FontCache
 import app.lawnchair.gestures.config.GestureHandlerConfig
@@ -461,6 +462,14 @@ class PreferenceManager2 @Inject constructor(
         key = booleanPreferencesKey(name = "drawer_suggestion_tabs"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_drawer_suggestion_tabs),
         onSet = { reloadHelper.recreate() },
+    )
+
+    /** How the selected drawer suggestion tab is marked. The drawer follows it live. */
+    val drawerSuggestionTabIndicator = preference(
+        key = stringPreferencesKey(name = "drawer_suggestion_tab_indicator"),
+        defaultValue = SuggestionTabIndicator.LINE,
+        parse = { SuggestionTabIndicator.fromString(it) },
+        save = { it.name },
     )
 
     val enableFontSelection = preference(

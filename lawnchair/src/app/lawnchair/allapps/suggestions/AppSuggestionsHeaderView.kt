@@ -130,6 +130,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         emptyText = ViewCompat.requireViewById(this, R.id.suggestion_empty)
         FontManager.INSTANCE.get(context).setCustomFont(emptyText, R.id.font_body)
         tabBar.onTabPicked = ::onTabPicked
+        if (featureOn) tabBar.indicatorStyle = PreferenceManager2.getInstance(context).drawerSuggestionTabIndicator.firstCached()
     }
 
     // FloatingHeaderRow
@@ -189,6 +190,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         AppLaunchStore.getInstance(context).revisionFlow.drop(1).onEach { refresh() }.launchIn(newScope)
         val prefs = PreferenceManager2.getInstance(context)
         prefs.hiddenApps.get().drop(1).onEach { refresh() }.launchIn(newScope)
+        prefs.drawerSuggestionTabIndicator.get().onEach { tabBar.indicatorStyle = it }.launchIn(newScope)
         applyColors()
         refresh()
     }
@@ -402,7 +404,8 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     /**
      * The selected tab uses the colors of Lawnchair's selected chips ([PILL_COLOR] and
-     * [SELECTED_LABEL_COLOR]), which follow the wallpaper or the custom accent color. The other
+     * [SELECTED_LABEL_COLOR], also used for the line indicator), which follow the wallpaper or the
+     * custom accent color. The other
      * labels and the empty-tab message use the color of the drawer's icon labels, including the
      * alternate color on light or see-through drawers, so they match custom drawer colors.
      */
@@ -411,10 +414,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
             context,
             if (shouldUseAlternateAllAppsTextColor(context)) R.attr.allAppsAlternateTextColor else android.R.attr.textColorSecondary,
         )
+        val selectedColor = SELECTED_LABEL_COLOR.resolveColor(context)
         tabBar.applyColors(
-            selectedTextColor = SELECTED_LABEL_COLOR.resolveColor(context),
+            selectedTextColor = selectedColor,
             unselectedTextColor = labelColor,
             pillColor = PILL_COLOR.resolveColor(context),
+            lineColor = selectedColor,
             rippleColor = Themes.getAttrColor(context, android.R.attr.colorControlHighlight),
         )
         emptyText.setTextColor(

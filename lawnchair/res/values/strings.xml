@@ -969,6 +969,12 @@
     <string name="drawer_suggestions_empty_new">No new or updated apps</string>
     <string name="drawer_suggestion_tabs_title">Suggestion tabs</string>
     <string name="drawer_suggestion_tabs_description">Frequent, recent and new or updated apps when you tap the app drawer search box</string>
+    <!-- How the selected suggestion tab is marked. -->
+    <string name="drawer_suggestion_tab_indicator_title">Tab indicator</string>
+    <!-- Tab indicator option: a line under the selected tab's label. -->
+    <string name="drawer_suggestion_tab_indicator_line">Line</string>
+    <!-- Tab indicator option: a filled pill behind the selected tab's label. -->
+    <string name="drawer_suggestion_tab_indicator_pill">Pill</string>
     <!-- Suggestion tabs setting, when the app drawer search bar is hidden. -->
     <string name="drawer_suggestion_tabs_needs_search_bar">Needs the app drawer search bar</string>
     <!-- Search history setting while the suggestion tabs are on: the empty search box shows the app drawer, not the history. -->

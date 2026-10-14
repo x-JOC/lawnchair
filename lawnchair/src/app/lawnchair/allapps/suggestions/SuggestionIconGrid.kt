@@ -11,11 +11,13 @@ import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.keyboard.FocusIndicatorHelper.SimpleFocusIndicatorHelper
 import com.android.launcher3.model.data.AppInfo
+import kotlin.math.ceil
+import kotlin.math.min
 
 /**
- * Rows of app icons laid out exactly like the drawer's A-Z grid below them: the same icon view
- * (`all_apps_icon`), cell height, column widths and right-to-left order as the grid's
- * `GridLayoutManager`, so the columns line up. The icons are direct children, so
+ * Rows of app icons laid out like the drawer's A-Z grid below them: the same icon view
+ * (`all_apps_icon`), column widths and right-to-left order as the grid's `GridLayoutManager`, so
+ * the columns line up, in shorter rows ([rowHeight]). The icons are direct children, so
  * [com.android.launcher3.allapps.AllAppsStore] can update their notification dots and install
  * progress like any other drawer icon.
  */
@@ -35,6 +37,7 @@ class SuggestionIconGrid @JvmOverloads constructor(
 
     /** How far above its place an icon starts its entrance. */
     private val iconDrop = resources.getDimension(R.dimen.drawer_suggestions_icon_entrance_drop)
+    private val rowPadding = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_row_padding_vertical)
 
     /**
      * Shows [apps] in [rows] rows of [columns] icons. Cells without an app stay invisible, so the
@@ -129,9 +132,25 @@ class SuggestionIconGrid @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Height of a row: an icon and its label with a little space above and below, which is less
+     * than the drawer's own cell height. The panel is drawn over the list, so its rows don't need
+     * to line up with the list's; the columns still do. Icons center themselves in it
+     * (`centerVertically`). Two-line labels keep the full cell height.
+     */
+    fun rowHeight(): Int {
+        val dp = launcher?.deviceProfile ?: return 0
+        val cellHeight = dp.allAppsProfile.cellHeightPx
+        if (dp.inv.enableTwoLinesInAllApps) return cellHeight
+        val icon = (0 until childCount).firstNotNullOfOrNull { getChildAt(it) as? BubbleTextView } ?: return cellHeight
+        val metrics = icon.paint.fontMetrics
+        val content = icon.iconSize + icon.compoundDrawablePadding + ceil(metrics.bottom - metrics.top).toInt()
+        return min(cellHeight, content + 2 * rowPadding)
+    }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
-        val cellHeight = cellHeight()
+        val cellHeight = rowHeight()
         borders = calculateItemBorders(borders, columns, width)
         val isRtl = layoutDirection == LAYOUT_DIRECTION_RTL
         for (i in 0 until childCount) {
@@ -145,7 +164,7 @@ class SuggestionIconGrid @JvmOverloads constructor(
     }
 
     override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
-        val cellHeight = cellHeight()
+        val cellHeight = rowHeight()
         val isRtl = layoutDirection == LAYOUT_DIRECTION_RTL
         for (i in 0 until childCount) {
             val column = columnPosition(i % columns, isRtl)
@@ -165,8 +184,6 @@ class SuggestionIconGrid @JvmOverloads constructor(
     override fun shouldDelayChildPressedState(): Boolean = false
 
     override fun hasOverlappingRendering(): Boolean = false
-
-    private fun cellHeight(): Int = launcher?.deviceProfile?.allAppsProfile?.cellHeightPx ?: 0
 
     private companion object {
         const val ICON_ENTRANCE_DURATION_MS = 280L

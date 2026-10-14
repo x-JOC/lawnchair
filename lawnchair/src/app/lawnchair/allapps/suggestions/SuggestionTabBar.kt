@@ -11,11 +11,15 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.RippleDrawable
+import android.os.Build
+import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.AttributeSet
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -66,12 +70,25 @@ class SuggestionTabBar @JvmOverloads constructor(
     private var lineColor = Color.BLACK
     private val pillMinWidth = resources.getDimension(R.dimen.drawer_suggestions_pill_min_width)
     private val lineMinWidth = resources.getDimension(R.dimen.drawer_suggestions_line_min_width)
-    private val lineHeight = resources.getDimension(R.dimen.drawer_suggestions_line_height)
+    private val lineHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_line_height)
+    private val lineGap = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_line_gap)
+    private val lineBottomInset = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_line_bottom_inset)
+    private val labelTopRoom = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_label_top_room)
+    private val lineBarMinHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_tab_bar_min_height_line)
+    private val pillBarMinHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_tab_bar_min_height_pill)
+    private val pillInsetTop = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_pill_inset_top)
+    private val pillInsetBottom = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_pill_inset_bottom)
+    private val pillPaddingVertical = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_pill_padding_vertical)
     private val minPillGap = resources.getDimension(R.dimen.drawer_suggestions_pill_min_gap)
     private val maxTextSize = resources.getDimension(R.dimen.drawer_suggestions_tab_text_size_max)
     private val minTextSize = resources.getDimension(R.dimen.drawer_suggestions_tab_text_size_min)
     private val textSizeStep = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 1f, resources.displayMetrics)
     private val measurePaint = TextPaint()
+
+    /** Height of the tallest label in [labelHeightTypeface] at [labelHeightTextSize], see [labelHeight]. */
+    private var labelHeight = 0
+    private var labelHeightTextSize = 0f
+    private var labelHeightTypeface: Typeface? = null
 
     private var selectedTextColor = Color.BLACK
     private var unselectedTextColor = Color.GRAY
@@ -92,7 +109,10 @@ class SuggestionTabBar @JvmOverloads constructor(
             invalidate()
         }
 
-    /** How the selected tab is marked. Changing it moves the indicator right away. */
+    /**
+     * How the selected tab is marked. Changing it moves the indicator right away, and changes the
+     * bar's height: the line needs less room than the pill.
+     */
     var indicatorStyle = SuggestionTabIndicator.LINE
         set(value) {
             if (field == value) return
@@ -100,6 +120,7 @@ class SuggestionTabBar @JvmOverloads constructor(
             pillAnimator?.cancel()
             pillAnimator = null
             updatePaintColor()
+            applyIndicatorLayout()
             snapPill()
         }
 
@@ -117,6 +138,7 @@ class SuggestionTabBar @JvmOverloads constructor(
             tab.setOnClickListener { onTabPicked?.invoke(SuggestionTab.entries[index]) }
             ViewCompat.setAccessibilityDelegate(tab, TabAccessibilityDelegate(index))
         }
+        applyIndicatorLayout()
         ViewCompat.setAccessibilityDelegate(
             this,
             object : AccessibilityDelegateCompat() {
@@ -184,9 +206,30 @@ class SuggestionTabBar @JvmOverloads constructor(
     }
 
     /**
+     * Places the labels for the [indicatorStyle]. With the line, a label sits at the bottom of its
+     * tab, right above the line; with the pill, it is centered in the pill, which fills the tab
+     * but for small insets.
+     */
+    private fun applyIndicatorLayout() {
+        if (!::tabs.isInitialized) return
+        val isPill = indicatorStyle == SuggestionTabIndicator.PILL
+        tabs.forEach { tab ->
+            tab.gravity = if (isPill) Gravity.CENTER else Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+            tab.setPaddingRelative(
+                tab.paddingStart,
+                if (isPill) pillInsetTop else 0,
+                tab.paddingEnd,
+                if (isPill) pillInsetBottom else lineGap + lineHeight + lineBottomInset,
+            )
+        }
+        requestLayout()
+    }
+
+    /**
      * Sets the inset, the label size and the tab widths before the tabs are measured. They all
      * depend on this bar's width, so they can only be worked out here, and each is only set when
-     * it actually changes.
+     * it actually changes. The bar is as tall as its labels and indicator need, and no shorter
+     * than a minimum, whatever height it is offered.
      */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
@@ -199,7 +242,34 @@ class SuggestionTabBar @JvmOverloads constructor(
             }
             fitTabs(width - 2 * inset)
         }
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        val height = if (indicatorStyle == SuggestionTabIndicator.PILL) {
+            max(pillBarMinHeight, pillInsetTop + pillPaddingVertical + labelHeight() + pillPaddingVertical + pillInsetBottom)
+        } else {
+            max(lineBarMinHeight, labelTopRoom + labelHeight() + lineGap + lineHeight + lineBottomInset)
+        }
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY))
+    }
+
+    /**
+     * Height of the tallest label at the current text size, as a text view lays it out without
+     * font padding, including the taller line height of fallback fonts such as Arabic ones.
+     */
+    private fun labelHeight(): Int {
+        if (tabs.isEmpty()) return 0
+        val textSize = tabs[0].textSize
+        val typeface = tabs[0].typeface
+        if (textSize == labelHeightTextSize && typeface == labelHeightTypeface) return labelHeight
+        labelHeightTextSize = textSize
+        labelHeightTypeface = typeface
+        labelHeight = tabs.maxOf { tab ->
+            StaticLayout.Builder.obtain(tab.text, 0, tab.text.length, tab.paint, MEASURE_WIDTH)
+                .setIncludePad(false)
+                .setMaxLines(1)
+                .apply { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) setUseLineSpacingFromFallbacks(true) }
+                .build()
+                .height
+        }
+        return labelHeight
     }
 
     /**
@@ -300,8 +370,12 @@ class SuggestionTabBar @JvmOverloads constructor(
         }
     }
 
-    /** Keeps each tab's ripple to the area its pill takes when that tab is selected. */
+    /**
+     * Keeps each tab's ripple to the area its pill takes when that tab is selected, or with the
+     * line, to the label and its line.
+     */
     private fun updateRippleMasks() {
+        val isPill = indicatorStyle == SuggestionTabIndicator.PILL
         tabs.forEachIndexed { index, view ->
             val mask = (view.background as? RippleDrawable)?.findDrawableByLayerId(android.R.id.mask) as? PillMask
                 ?: return@forEachIndexed
@@ -309,9 +383,9 @@ class SuggestionTabBar @JvmOverloads constructor(
             if (right <= left) return@forEachIndexed
             mask.setInsets(
                 (left - view.left).toInt(),
-                view.paddingTop,
+                if (isPill) view.paddingTop else 0,
                 (view.right - right).toInt(),
-                view.paddingBottom,
+                if (isPill) view.paddingBottom else lineBottomInset,
             )
         }
     }
@@ -335,13 +409,14 @@ class SuggestionTabBar @JvmOverloads constructor(
     }
 
     override fun dispatchDraw(canvas: Canvas) {
-        // Behind the labels and their ripples. The line sits at the bottom of the pill area.
+        // Behind the labels and their ripples. The line sits a small gap below the label.
         val reveal = indicatorReveal.coerceIn(0f, 1f)
         if (pillRight > pillLeft && tabs.isNotEmpty() && reveal > 0f) {
             val tab = tabs[0]
-            val bottom = (tab.bottom - tab.paddingBottom).toFloat()
+            val labelBottom = (tab.bottom - tab.paddingBottom).toFloat()
             val isPill = indicatorStyle == SuggestionTabIndicator.PILL
-            val top = if (isPill) (tab.top + tab.paddingTop).toFloat() else bottom - lineHeight
+            val top = if (isPill) (tab.top + tab.paddingTop).toFloat() else labelBottom + lineGap
+            val bottom = if (isPill) labelBottom else top + lineHeight
             val radius = (bottom - top) / 2
             val center = (pillLeft + pillRight) / 2
             val halfWidth = (pillRight - pillLeft) / 2 * if (isPill) Utilities.mapRange(reveal, PILL_REVEAL_START_SCALE, 1f) else reveal
@@ -423,5 +498,8 @@ class SuggestionTabBar @JvmOverloads constructor(
 
         /** The pill's width, as a share of its full width, when it starts to grow in. */
         const val PILL_REVEAL_START_SCALE = 0.6f
+
+        /** Wide enough for any label on one line, when measuring its height. */
+        const val MEASURE_WIDTH = 10_000
     }
 }

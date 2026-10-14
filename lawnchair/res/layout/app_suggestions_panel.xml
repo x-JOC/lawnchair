@@ -24,12 +24,13 @@
     android:layout_height="wrap_content"
     android:importantForAccessibility="yes"
     android:orientation="vertical"
+    android:paddingBottom="@dimen/drawer_suggestions_panel_padding_bottom"
     android:visibility="gone">
 
     <app.lawnchair.allapps.suggestions.SuggestionTabBar
         android:id="@+id/suggestion_tab_bar"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/drawer_suggestions_tab_bar_height"
+        android:layout_height="wrap_content"
         android:importantForAccessibility="yes"
         android:orientation="horizontal">
 

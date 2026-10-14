@@ -94,7 +94,6 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     private val launcher: LawnchairLauncher? = context.findLawnchairLauncher()
     private val featureOn = launcher != null && isEnabledFor(context)
-    private val tabBarHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_tab_bar_height)
     private val emptyHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_empty_height)
     private val cornerRadius = resources.getDimension(R.dimen.drawer_suggestions_panel_corner_radius)
     private val shadowHeight = resources.getDimension(R.dimen.drawer_suggestions_panel_shadow_height)
@@ -288,10 +287,14 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
                 setPadding(padding.left, paddingTop, padding.right, paddingBottom)
             }
         }
-        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(panelHeight(), MeasureSpec.EXACTLY))
+        // The tab bar is as tall as its labels need, which depends on the width it gets.
+        tabBar.measure(
+            getChildMeasureSpec(widthMeasureSpec, paddingLeft + paddingRight, LayoutParams.MATCH_PARENT),
+            MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+        )
+        val height = paddingTop + tabBar.measuredHeight + contentHeight() + paddingBottom
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY))
     }
-
-    private fun panelHeight(): Int = paddingTop + tabBarHeight + contentHeight() + paddingBottom
 
     override fun hasOverlappingRendering(): Boolean = false
 
@@ -516,7 +519,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
             .setDampingRatio(REVEAL_DAMPING_RATIO)
             .setStiffness(REVEAL_STIFFNESS)
             // One pixel of the panel.
-            .setMinimumVisibleChange(1f / panelHeight().coerceAtLeast(1))
+            .setMinimumVisibleChange(1f / height.coerceAtLeast(1))
             .build(this, REVEAL)
             .also { it.start() }
 
@@ -698,10 +701,8 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         }
     }
 
-    private fun cellHeight(): Int = launcher?.deviceProfile?.allAppsProfile?.cellHeightPx ?: 0
-
     /** Height below the tabs: the rows of icons, or one line for the message if every tab is empty. */
-    private fun contentHeight(): Int = if (reservedRows > 0) reservedRows * cellHeight() else emptyHeight
+    private fun contentHeight(): Int = if (reservedRows > 0) reservedRows * grid.rowHeight() else emptyHeight
 
     private val stateListener = object : StateManager.StateListener<LauncherState> {
         override fun onStateTransitionStart(toState: LauncherState) {

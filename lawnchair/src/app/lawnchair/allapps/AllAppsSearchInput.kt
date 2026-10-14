@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
@@ -209,6 +211,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                         }
                         input.requestFocus()
                         input.showKeyboard()
+                        ensureKeyboardWithSuggestionTabs()
                     },
                     onStartIconClick = if (shouldShowIcons) {
                         {
@@ -227,8 +230,9 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                             QsbIconId.LENS -> lensIntent?.let { context.startActivity(it) }
 
                             QsbIconId.CLEAR -> {
+                                // Deleting the query has the search bar controller clear the results.
                                 input.reset()
-                                showZeroState()
+                                showZeroState(clearResults = false)
                                 updateHint()
                             }
 
@@ -284,6 +288,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                 if (input.text.toString().isEmpty() && isDirectFocus) {
                     showZeroState()
                     setDirectFocus(false)
+                    ensureKeyboardWithSuggestionTabs()
                 }
 
                 setBackgroundVisibility(false, 0f)
@@ -292,7 +297,9 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             } else {
                 setBackgroundVisibility(true, 1f)
                 animateHintVisibility(false)
-                if (prefs.searchResulRecentSuggestion.get()) {
+                // Not with the suggestion tabs on: the history is only shown on the search page
+                // that the tabs replace (showZeroState), so it would only pile up unseen.
+                if (prefs.searchResulRecentSuggestion.get() && !AppSuggestionsHeaderView.isEnabledFor(context)) {
                     val query = editText.text.toString()
                     suggestionsRecent.saveRecentQuery(query, null)
                 }
@@ -317,7 +324,8 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             afterTextChanged = {
                 updateHint()
                 if (input.text.isNullOrEmpty() && input.hasFocus() && !input.isResetting) {
-                    showZeroState()
+                    // The search bar controller's own listener, which runs next, clears the results.
+                    showZeroState(clearResults = false)
                 }
                 if (input.text.toString() == "/lawnchairdebug") {
                     val enableDebugMenu = prefs.enableDebugMenu
@@ -346,16 +354,35 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
      * itself is the empty state, as in Nova: the tabs and the app list stay visible with the
      * keyboard up, and only typing switches to results. Otherwise the search algorithm decides
      * (search history, or the drawer).
+     *
+     * [clearResults] is false when the query was just deleted: the search bar controller clears
+     * the results then anyway, and clearing twice restarts the animation back to the drawer.
      */
-    private fun showZeroState() {
+    private fun showZeroState(clearResults: Boolean = true) {
         if (AppSuggestionsHeaderView.isEnabledFor(context)) {
             // Cancel first, so results of a query that was just cleared can't arrive late and
             // cover the drawer again.
             searchAlgorithm?.cancel(true)
             // Keeps focus and the keyboard while the query is empty (onClearSearchResult).
-            clearSearchResult()
+            if (clearResults) clearSearchResult()
         } else {
             searchAlgorithm?.doZeroStateSearch(this)
+        }
+    }
+
+    /**
+     * With the suggestion tabs on, tapping the empty box changes nothing else on screen, so the
+     * keyboard is the only sign that the box is ready. The first tap in a new launcher window has
+     * been seen to focus the box without the keyboard coming up, so ask for it once more on the
+     * next frame if it isn't showing by then.
+     */
+    private fun ensureKeyboardWithSuggestionTabs() {
+        if (!AppSuggestionsHeaderView.isEnabledFor(context)) return
+        input.post {
+            if (!input.isFocused) return@post
+            val imeVisible = ViewCompat.getRootWindowInsets(input)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+            val window = launcher.window ?: return@post
+            if (!imeVisible) WindowCompat.getInsetsController(window, input).show(WindowInsetsCompat.Type.ime())
         }
     }
 

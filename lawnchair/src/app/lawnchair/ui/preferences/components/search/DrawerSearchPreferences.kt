@@ -202,9 +202,17 @@ private fun LocalSearchSettings(
             navController.navigate(SearchProviderPreference(SearchProviderId.SETTINGS))
         },
     )
+    // With the drawer's suggestion tabs on, the empty search box shows the drawer instead of the
+    // search history, so the history is neither shown nor saved (AllAppsSearchInput).
+    val historyAdapter = prefs.searchResulRecentSuggestion.getAdapter()
+    val suggestionTabsOn = prefs2.drawerSuggestionTabs.getAdapter().state.value &&
+        !prefs2.hideAppDrawerSearchBar.getAdapter().state.value
     TwoTargetSwitchPreference(
-        adapter = prefs.searchResulRecentSuggestion.getAdapter(),
+        checked = historyAdapter.state.value && !suggestionTabsOn,
+        onCheckedChange = historyAdapter::onChange,
         label = stringResource(id = R.string.search_pref_result_history_title),
+        description = if (suggestionTabsOn) stringResource(R.string.search_history_off_with_suggestion_tabs) else null,
+        enabled = !suggestionTabsOn,
         onClick = {
             navController.navigate(SearchProviderPreference(SearchProviderId.HISTORY))
         },

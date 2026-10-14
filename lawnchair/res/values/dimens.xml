@@ -149,5 +149,8 @@
     <dimen name="drawer_suggestions_empty_padding_horizontal">24dp</dimen>
     <!-- Room for the empty-tab message when every tab is empty, instead of a row of icons. -->
     <dimen name="drawer_suggestions_empty_height">44dp</dimen>
+    <!-- The panel's rounded bottom corners, and the soft shadow it casts on the list below. -->
+    <dimen name="drawer_suggestions_panel_corner_radius">20dp</dimen>
+    <dimen name="drawer_suggestions_panel_shadow_height">10dp</dimen>
 
 </resources>

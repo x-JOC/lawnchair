@@ -116,6 +116,7 @@ import java.util.stream.Stream;
 import app.lawnchair.preferences2.PreferenceCacheExtensionsKt;
 import static com.topjohnwu.superuser.internal.Utils.context;
 import app.lawnchair.allapps.LawnchairAlphabeticalAppsList;
+import app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView;
 import app.lawnchair.font.FontManager;
 import app.lawnchair.preferences.PreferenceManager;
 import app.lawnchair.preferences2.PreferenceManager2;
@@ -181,6 +182,9 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     private final RectF mTmpRectF = new RectF();
     protected AllAppsPagedView mViewPager;
     protected FloatingHeaderView mHeader;
+    // LC-Note: the drawer's suggestion tabs, drawn over the lists right under the search bar
+    // while the search box is in use. They never move the lists.
+    protected AppSuggestionsHeaderView mSuggestionsPanel;
     protected final List<AllAppsRow> mAdditionalHeaderRows = new ArrayList<>();
     protected View mBottomSheetBackground;
     protected RecyclerViewFastScroller mFastScroller;
@@ -322,6 +326,11 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         mFastScrollLetterLayout = findViewById(R.id.scroll_letter_layout);
         setClipChildren(false);
 
+        // LC-Note: above the lists and the header, below the search bar.
+        mSuggestionsPanel = (AppSuggestionsHeaderView) getLayoutInflater().inflate(
+                R.layout.app_suggestions_panel, this, false);
+        addView(mSuggestionsPanel);
+
         mSearchContainer = inflateSearchBar();
         if (!isSearchBarFloating()) {
             // Add the search box above everything else in this container (if the flag is enabled,
@@ -424,6 +433,11 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
     public View getSearchView() {
         return mSearchContainer;
+    }
+
+    /** LC-Note: the drawer's suggestion tabs, which show while the search box is in use. */
+    public AppSuggestionsHeaderView getSuggestionsPanel() {
+        return mSuggestionsPanel;
     }
 
     /** Clears displayed search results. */
@@ -530,6 +544,12 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         // If the MotionEvent is inside the handle area, and the container keeps on receiving touch
         // input, container should move down.
         if (dragLayer.isEventOverView(mBottomSheetHandleArea, ev)) {
+            return true;
+        }
+        // LC-Note: the suggestion tabs don't scroll, so like the search box they let the drawer
+        // follow a drag that starts on them.
+        if (mSuggestionsPanel.isCoveringContent()
+                && dragLayer.isEventOverView(mSuggestionsPanel, ev)) {
             return true;
         }
         AllAppsRecyclerView rv = getActiveRecyclerView();
@@ -880,6 +900,15 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         } else {
             layoutBelowSearchContainer(mHeader, false /* includeTabsMargin */);
         }
+
+        // LC-Note: the suggestion tabs start where the header does, right under the search bar.
+        // They need the search bar, so they stay gone without it.
+        removeCustomRules(mSuggestionsPanel);
+        if (isSearchBarFloating()) {
+            alignParentTop(mSuggestionsPanel, false /* includeTabsMargin */);
+        } else {
+            layoutBelowSearchContainer(mSuggestionsPanel, false /* includeTabsMargin */);
+        }
     }
 
     /**
@@ -904,6 +933,12 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                         arrayList.add(0, v);
                     });
         }
+        // LC-Note: the suggestion tabs come right after the search box, where they show.
+        if (arrayList.remove(mSuggestionsPanel)) {
+            boolean searchFirst = !arrayList.isEmpty()
+                    && arrayList.get(0).getId() == R.id.search_container_all_apps;
+            arrayList.add(searchFirst ? 1 : 0, mSuggestionsPanel);
+        }
     }
 
     protected void updateHeaderScroll(int scrolledOffset) {
@@ -924,6 +959,8 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             mHeaderColor = headerColor;
             mTabsProtectionAlpha = tabsAlpha;
             invalidateHeader();
+            // LC-Note: the suggestion tabs continue the header protection below the search bar.
+            mSuggestionsPanel.invalidate();
         }
         if (mSearchUiManager.getEditText() == null) {
             return;
@@ -1278,7 +1315,9 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
             AllAppsRecyclerView rv = getActiveRecyclerView();
+            // LC-Note: the suggestion tabs cover the top of the scroll bar while they show.
             if (rv != null && rv.getScrollbar() != null
+                    && !mSuggestionsPanel.coversPoint(ev.getX(), ev.getY())
                     && rv.getScrollbar().isHitInParent(ev.getX(), ev.getY(), mFastScrollerOffset)) {
                 mTouchHandler = rv.getScrollbar();
             } else {
@@ -1432,6 +1471,25 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         mNavBarScrimHeight = computeNavBarScrimHeight(insets);
         applyAdapterSideAndBottomPaddings(mActivityContext.getDeviceProfile());
         return super.dispatchApplyWindowInsets(insets);
+    }
+
+    @Override
+    protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        // LC-Note: while the suggestion tabs show, the lists and the header below the search bar
+        // don't draw under them, so the tabs sit on the drawer background itself, whatever its
+        // color, opacity or blur. The tabs then draw their shadow over the lists.
+        if (mSuggestionsPanel != null && mSuggestionsPanel.isCoveringContent()) {
+            if (child == mSuggestionsPanel) {
+                mSuggestionsPanel.drawShadow(canvas);
+            } else if (child != mSearchContainer && child != mBottomSheetBackground) {
+                int saveCount = canvas.save();
+                mSuggestionsPanel.clipOutCoveredArea(canvas);
+                boolean more = super.drawChild(canvas, child, drawingTime);
+                canvas.restoreToCount(saveCount);
+                return more;
+            }
+        }
+        return super.drawChild(canvas, child, drawingTime);
     }
 
     @Override
@@ -1761,6 +1819,29 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                     tabBottomWithScale,
                     mHeaderPaint);
         }
+    }
+
+    /**
+     * LC-Note: the color of the header protection drawn behind the search bar right now (see
+     * {@link #drawOnScrimWithScaleAndBottomOffset}), or 0 while there is none. The suggestion
+     * tabs, which show right below the search bar, continue it.
+     */
+    public int getHeaderProtectionColor() {
+        boolean hasBottomSheet = mBottomSheetBackground.getVisibility() == VISIBLE;
+        if (hasBottomSheet && (Flags.allAppsBlur() || (isSearchBarFloating() && !mUsingTabs))) {
+            return 0;
+        }
+        int headerWithoutAlpha = ColorUtils.setAlphaComponent(mHeaderColor, 0);
+        int backgroundWithoutAlpha = ColorUtils.setAlphaComponent(getBackgroundColor(), 0);
+        if (headerWithoutAlpha == backgroundWithoutAlpha || mHeaderColor == 0) {
+            return 0;
+        }
+        if (hasBottomSheet) {
+            float bottomSheetBackgroundAlpha = Color.alpha(getBottomSheetBackgroundColor()) / 255f;
+            return ColorUtils.setAlphaComponent(mHeaderColor,
+                    Math.round(Color.alpha(mHeaderColor) * bottomSheetBackgroundAlpha));
+        }
+        return mHeaderColor;
     }
 
     /**

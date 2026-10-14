@@ -33,7 +33,6 @@ import android.view.accessibility.AccessibilityManager;
 import androidx.annotation.ColorInt;
 import androidx.annotation.VisibleForTesting;
 
-import app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView;
 import com.android.launcher3.Flags;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
@@ -136,24 +135,15 @@ public class AppsDividerView extends View implements FloatingHeaderRow {
         } else {
             // Check how many sections above me.
             int sectionCount = 0;
-            boolean showAllAppsLabel = mShowAllAppsLabel;
             for (FloatingHeaderRow row : mRows) {
                 if (row == this) {
                     break;
                 } else if (row.shouldDraw()) {
                     sectionCount++;
-                    // LC-Note: the drawer's suggestion tabs already set their apps apart from the
-                    // list, so they end with the thin line rather than the "All apps" label, which
-                    // made the header look heavy. Screen reader users keep the label, which tells
-                    // them where the list starts.
-                    if (row instanceof AppSuggestionsHeaderView
-                            && !mAccessibilityManager.isTouchExplorationEnabled()) {
-                        showAllAppsLabel = false;
-                    }
                 }
             }
 
-            if (showAllAppsLabel && sectionCount > 0) {
+            if (mShowAllAppsLabel && sectionCount > 0) {
                 dividerType = DividerType.ALL_APPS_LABEL;
             } else if (sectionCount == 1) {
                 dividerType = DividerType.LINE;

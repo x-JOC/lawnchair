@@ -22,7 +22,11 @@ import app.lawnchair.LawnchairLauncher
 import app.lawnchair.font.FontManager
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
-import app.lawnchair.theme.color.tokens.AllAppsTabColors
+import app.lawnchair.theme.color.tokens.ColorTokens
+import app.lawnchair.theme.color.tokens.DayNightColorToken
+import app.lawnchair.theme.color.tokens.Shade
+import app.lawnchair.theme.color.tokens.Swatch
+import app.lawnchair.theme.color.tokens.SwatchColorToken
 import app.lawnchair.util.shouldUseAlternateAllAppsTextColor
 import com.android.app.animation.Interpolators
 import com.android.launcher3.DeviceProfile
@@ -327,26 +331,25 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     // Looks
 
     /**
-     * Label colors follow the drawer's icon labels (including the alternate color on light or
-     * see-through drawers) and the indicator uses the drawer's tab color, so the header matches
-     * custom drawer and tab colors.
+     * The selected tab uses the colors of Lawnchair's selected chips ([PILL_COLOR] and
+     * [SELECTED_LABEL_COLOR]), which follow the wallpaper or the custom accent color. The other
+     * labels and the empty-tab message use the color of the drawer's icon labels, including the
+     * alternate color on light or see-through drawers, so they match custom drawer colors.
      */
     private fun applyColors() {
-        val useAlternate = shouldUseAlternateAllAppsTextColor(context)
-        val selectedColor = Themes.getAttrColor(
-            context,
-            if (useAlternate) R.attr.allAppsAlternateTextColor else android.R.attr.textColorPrimary,
-        )
         val labelColor = Themes.getAttrColor(
             context,
-            if (useAlternate) R.attr.allAppsAlternateTextColor else android.R.attr.textColorSecondary,
+            if (shouldUseAlternateAllAppsTextColor(context)) R.attr.allAppsAlternateTextColor else android.R.attr.textColorSecondary,
         )
-        val unselectedColor = ColorUtils.setAlphaComponent(
-            labelColor,
-            (Color.alpha(labelColor) * UNSELECTED_TEXT_ALPHA).roundToInt(),
+        tabBar.applyColors(
+            selectedTextColor = SELECTED_LABEL_COLOR.resolveColor(context),
+            unselectedTextColor = labelColor,
+            pillColor = PILL_COLOR.resolveColor(context),
+            rippleColor = Themes.getAttrColor(context, android.R.attr.colorControlHighlight),
         )
-        tabBar.applyColors(selectedColor, unselectedColor, AllAppsTabColors.selectedBackground(context))
-        emptyText.setTextColor(unselectedColor)
+        emptyText.setTextColor(
+            ColorUtils.setAlphaComponent(labelColor, (Color.alpha(labelColor) * EMPTY_TEXT_ALPHA).roundToInt()),
+        )
     }
 
     /**
@@ -392,7 +395,15 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     companion object {
         private const val TAG = "AppSuggestionsHeader"
         private const val TAB_FADE_DURATION_MS = 150L
-        private const val UNSELECTED_TEXT_ALPHA = 0.7f
+        private const val EMPTY_TEXT_ALPHA = 0.8f
+
+        /**
+         * The selected tab's pill and label: the colors of a selected chip in Lawnchair's settings
+         * (`ui/preferences/components/layout/Chip.kt`), that is Material's secondary container
+         * and primary colors.
+         */
+        private val PILL_COLOR = DayNightColorToken(ColorTokens.Accent2_100, SwatchColorToken(Swatch.Accent2, Shade.S700))
+        private val SELECTED_LABEL_COLOR = DayNightColorToken(ColorTokens.Accent1_600, ColorTokens.Accent1_200)
 
         /** Longer than any launch animation; see [setUiUpdatesPaused]. */
         private const val MAX_UI_PAUSE_MS = 2000L

@@ -131,19 +131,17 @@
 
     <!-- App drawer suggestion tabs (AppSuggestionsHeaderView). The rows of icons below the tabs
          use the drawer's own cell height. -->
-    <dimen name="drawer_suggestions_tab_bar_height">48dp</dimen>
-    <dimen name="drawer_suggestions_tab_padding_horizontal">8dp</dimen>
-    <dimen name="drawer_suggestions_tab_ripple_inset_horizontal">4dp</dimen>
-    <dimen name="drawer_suggestions_tab_ripple_inset_vertical">6dp</dimen>
+    <dimen name="drawer_suggestions_tab_bar_height">40dp</dimen>
+    <!-- The selection pill fills the tab bar's height minus these insets (32dp), sitting a little
+         low so that it is about as far from the search bar as from the icons below. -->
+    <dimen name="drawer_suggestions_pill_inset_top">6dp</dimen>
+    <dimen name="drawer_suggestions_pill_inset_bottom">2dp</dimen>
+    <!-- Space between the label and the pill's ends, as in Lawnchair's settings chips. -->
+    <dimen name="drawer_suggestions_pill_padding_horizontal">14dp</dimen>
+    <dimen name="drawer_suggestions_pill_min_width">48dp</dimen>
+    <dimen name="drawer_suggestions_pill_min_gap">8dp</dimen>
     <dimen name="drawer_suggestions_tab_text_size_max">14sp</dimen>
     <dimen name="drawer_suggestions_tab_text_size_min">11sp</dimen>
-    <dimen name="drawer_suggestions_indicator_height">3dp</dimen>
-    <dimen name="drawer_suggestions_indicator_bottom_inset">4dp</dimen>
-    <!-- The indicator is as wide as the label plus this much on each side, but at least
-         indicator_min_width and at most the tab width minus indicator_tab_inset on each side. -->
-    <dimen name="drawer_suggestions_indicator_extra_width">6dp</dimen>
-    <dimen name="drawer_suggestions_indicator_min_width">24dp</dimen>
-    <dimen name="drawer_suggestions_indicator_tab_inset">8dp</dimen>
     <dimen name="drawer_suggestions_empty_padding_horizontal">24dp</dimen>
 
 </resources>

@@ -223,20 +223,24 @@
         <item name="folderCellWidth">58dp</item>
     </style>
 
-    <!-- One of the Frequent / Recent / New tabs at the top of the app drawer. SuggestionTabBar
-         sets the text size in code so all three labels share one size. -->
+    <!-- One of the Frequent / Recent / New tabs at the top of the app drawer. Its padding is the
+         space around the label inside the selection pill, which fills the tab's height between
+         the top and bottom padding. SuggestionTabBar sets the text size and the width in code, so
+         all three labels share one size. -->
     <style name="DrawerSuggestionTab">
-        <item name="android:layout_width">0dp</item>
+        <!-- As wide as the label and its pill padding, plus an equal share of the space left. -->
+        <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">match_parent</item>
         <item name="android:layout_weight">1</item>
         <item name="android:gravity">center</item>
-        <item name="android:paddingStart">@dimen/drawer_suggestions_tab_padding_horizontal</item>
-        <item name="android:paddingEnd">@dimen/drawer_suggestions_tab_padding_horizontal</item>
+        <item name="android:paddingStart">@dimen/drawer_suggestions_pill_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/drawer_suggestions_pill_padding_horizontal</item>
+        <item name="android:paddingTop">@dimen/drawer_suggestions_pill_inset_top</item>
+        <item name="android:paddingBottom">@dimen/drawer_suggestions_pill_inset_bottom</item>
         <item name="android:maxLines">1</item>
         <item name="android:ellipsize">end</item>
         <item name="android:letterSpacing">0.01</item>
         <item name="android:textSize">@dimen/drawer_suggestions_tab_text_size_max</item>
-        <item name="android:background">@drawable/drawer_suggestion_tab_background</item>
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
         <!-- A tap must not take focus from the search box, so the keyboard stays up. -->

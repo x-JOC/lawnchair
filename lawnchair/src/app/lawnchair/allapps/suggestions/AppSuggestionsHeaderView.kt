@@ -1,5 +1,6 @@
 package app.lawnchair.allapps.suggestions
 
+import android.animation.Animator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
@@ -10,16 +11,19 @@ import android.graphics.LinearGradient
 import android.graphics.Outline
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Build
 import android.util.AttributeSet
+import android.util.FloatProperty
 import android.util.Log
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.animation.Interpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.annotation.StringRes
@@ -42,10 +46,15 @@ import com.android.app.animation.Interpolators
 import com.android.launcher3.DeviceProfile
 import com.android.launcher3.LauncherState
 import com.android.launcher3.R
+import com.android.launcher3.Utilities
 import com.android.launcher3.allapps.ActivityAllAppsContainerView
 import com.android.launcher3.allapps.AllAppsStore
+import com.android.launcher3.anim.AnimationSuccessListener
+import com.android.launcher3.anim.SpringAnimationBuilder
 import com.android.launcher3.statemanager.StateManager
 import com.android.launcher3.util.Themes
+import kotlin.math.ceil
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
@@ -89,6 +98,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private val emptyHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_empty_height)
     private val cornerRadius = resources.getDimension(R.dimen.drawer_suggestions_panel_corner_radius)
     private val shadowHeight = resources.getDimension(R.dimen.drawer_suggestions_panel_shadow_height)
+    private val contentSlide = resources.getDimension(R.dimen.drawer_suggestions_content_slide)
     private val loader by lazy { AppSuggestionsLoader(context) }
 
     private lateinit var tabBar: SuggestionTabBar
@@ -126,9 +136,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     /**
      * How much of the panel is shown, from its top: 0 when hidden, 1 when all of it shows. It
-     * reveals the panel downwards from the search bar.
+     * reveals the panel downwards from the search bar, and may overshoot 1 a little on a spring.
      */
     private var reveal = 0f
+    private var revealAnimator: Animator? = null
+    private var entranceAnimator: Animator? = null
+    private val revealClip = Rect()
 
     private val coverRect = RectF()
     private val coverPath = Path()
@@ -225,18 +238,34 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         if (Color.alpha(protection) != 0) canvas.drawColor(protection)
     }
 
+    /**
+     * Shows [value] of the panel (see [reveal]), with the content sliding down into place as it
+     * opens. Only render properties change, so nothing is laid out again.
+     */
     private fun setReveal(value: Float) {
         if (reveal == value) return
         reveal = value
+        val slide = (1f - value) * -contentSlide
+        tabBar.translationY = slide
+        content.translationY = slide
+        updateRevealClip()
+    }
+
+    /**
+     * Clips the panel to its shown part: the outline rounds its bottom corners, the clip bounds
+     * keep content that slides from above inside its top edge.
+     */
+    private fun updateRevealClip() {
+        revealClip.set(0, 0, width, ceil(coveredHeight()).toInt())
+        clipBounds = revealClip
         invalidateOutline()
-        // The parent draws the clip and the shadow.
+        // The parent draws the clip over the lists and the shadow.
         (parent as? View)?.invalidate()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        invalidateOutline()
-        (parent as? View)?.invalidate()
+        updateRevealClip()
     }
 
     /** Takes every touch on its shown part, so none reaches the list under it. */
@@ -313,6 +342,10 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
             it.animate().cancel()
             it.alpha = 1f
         }
+        cancelAnimations()
+        setReveal(if (showing) 1f else 0f)
+        if (!showing) visibility = GONE
+        resetContent()
     }
 
     override fun onAppsUpdated() {
@@ -431,17 +464,148 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     }
 
     /** Shows the panel while the search box is in use with an empty query, once it has suggestions. */
-    private fun updateShown() {
+    private fun updateShown(animate: Boolean = true) {
         val show = featureOn && sized && searchBoxFocused && queryEmpty
         if (show == showing) return
         showing = show
+        val animated = animate && mayAnimate()
         if (show) {
             visibility = VISIBLE
-            setReveal(1f)
+            if (animated) {
+                animateIn()
+            } else {
+                cancelAnimations()
+                resetContent()
+                setReveal(1f)
+            }
+        } else if (animated && reveal > 0f) {
+            animateOut()
         } else {
+            cancelAnimations()
             setReveal(0f)
             visibility = GONE
+            resetContent()
         }
+    }
+
+    /**
+     * Opens the panel: it unfolds downwards from the search bar on a gentle spring while its
+     * content slides down into place, the tabs fade in, the selected tab's indicator draws in and
+     * the icons pop in one after another in reading order. Coming back from a close that has only
+     * just started, the content simply fades back in.
+     */
+    private fun animateIn() {
+        cancelAnimations()
+        val fresh = reveal < 0.5f
+        if (fresh) {
+            tabBar.alpha = 0f
+            tabBar.indicatorReveal = 0f
+            // The empty-tab message fades in as a whole; icons each on their own.
+            content.alpha = if (emptyText.isVisible) 0f else 1f
+            grid.setEntranceTime(0f)
+        } else {
+            tabBar.indicatorReveal = 1f
+            grid.endEntrance()
+        }
+        val startTabAlpha = tabBar.alpha
+        val startContentAlpha = content.alpha
+
+        revealAnimator = SpringAnimationBuilder(context)
+            .setStartValue(reveal)
+            .setEndValue(1f)
+            .setDampingRatio(REVEAL_DAMPING_RATIO)
+            .setStiffness(REVEAL_STIFFNESS)
+            // One pixel of the panel.
+            .setMinimumVisibleChange(1f / panelHeight().coerceAtLeast(1))
+            .build(this, REVEAL)
+            .also { it.start() }
+
+        val duration = if (fresh) max(ENTRANCE_INDICATOR_DELAY_MS + ENTRANCE_INDICATOR_DURATION_MS, ENTRANCE_ICONS_DELAY_MS + grid.entranceDuration()) else RETURN_DURATION_MS
+        entranceAnimator = ValueAnimator.ofFloat(0f, duration.toFloat()).apply {
+            this.duration = duration
+            interpolator = Interpolators.LINEAR
+            addUpdateListener { animator ->
+                val time = animator.animatedValue as Float
+                if (fresh) {
+                    tabBar.alpha = progressAt(time, ENTRANCE_TABS_DELAY_MS, ENTRANCE_TABS_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE)
+                    tabBar.indicatorReveal = progressAt(time, ENTRANCE_INDICATOR_DELAY_MS, ENTRANCE_INDICATOR_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE)
+                    content.alpha = Utilities.mapRange(progressAt(time, ENTRANCE_ICONS_DELAY_MS, ENTRANCE_TABS_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE), startContentAlpha, 1f)
+                    grid.setEntranceTime(time - ENTRANCE_ICONS_DELAY_MS)
+                } else {
+                    val progress = Interpolators.EMPHASIZED_DECELERATE.getInterpolation(animator.animatedFraction)
+                    tabBar.alpha = Utilities.mapRange(progress, startTabAlpha, 1f)
+                    content.alpha = Utilities.mapRange(progress, startContentAlpha, 1f)
+                }
+            }
+            addListener(
+                object : AnimationSuccessListener() {
+                    override fun onAnimationSuccess(animation: Animator) {
+                        entranceAnimator = null
+                        resetContent()
+                    }
+                },
+            )
+            start()
+        }
+    }
+
+    /**
+     * Closes the panel quickly: it folds back up into the search bar while its content fades and
+     * slides up, then goes.
+     */
+    private fun animateOut() {
+        cancelAnimations()
+        val startReveal = reveal
+        val startTabAlpha = tabBar.alpha
+        val startContentAlpha = content.alpha
+        revealAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = HIDE_DURATION_MS
+            interpolator = Interpolators.LINEAR
+            addUpdateListener { animator ->
+                val fraction = animator.animatedFraction
+                setReveal(Utilities.mapRange(Interpolators.EMPHASIZED_ACCELERATE.getInterpolation(fraction), startReveal, 0f))
+                val fade = 1f - (fraction / HIDE_FADE_SHARE).coerceAtMost(1f)
+                tabBar.alpha = startTabAlpha * fade
+                content.alpha = startContentAlpha * fade
+            }
+            addListener(
+                object : AnimationSuccessListener() {
+                    override fun onAnimationSuccess(animation: Animator) {
+                        revealAnimator = null
+                        visibility = GONE
+                        resetContent()
+                    }
+                },
+            )
+            start()
+        }
+    }
+
+    /** Stops the panel's animations where they are. */
+    private fun cancelAnimations() {
+        revealAnimator?.cancel()
+        revealAnimator = null
+        entranceAnimator?.cancel()
+        entranceAnimator = null
+    }
+
+    /** Shows the panel's content as usual, after or without an animation. */
+    private fun resetContent() {
+        tabBar.alpha = 1f
+        tabBar.indicatorReveal = 1f
+        content.alpha = 1f
+        grid.endEntrance()
+    }
+
+    /**
+     * Whether the panel may animate: animations are on and the drawer may be on screen, that is
+     * the launcher is started and the drawer is open or a state transition is running.
+     */
+    private fun mayAnimate(): Boolean {
+        val launcher = launcher ?: return false
+        if (!ValueAnimator.areAnimatorsEnabled() || !isAttachedToWindow || !launcher.isStarted) return false
+        val stateManager = launcher.stateManager
+        return stateManager.state == LauncherState.ALL_APPS || stateManager.isInTransition
     }
 
     private fun onTabPicked(tab: SuggestionTab) {
@@ -552,8 +716,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
         override fun onStateTransitionComplete(finalState: LauncherState) {
             if (finalState != LauncherState.ALL_APPS) {
-                // In case the search box kept its focus.
+                // In case the search box kept its focus. The drawer is gone, so no animation.
                 searchBoxFocused = false
+                updateShown(animate = false)
                 showLatest(allowHeightChange = true)
             }
         }
@@ -572,6 +737,36 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         private const val TAG = "AppSuggestionsHeader"
         private const val TAB_FADE_DURATION_MS = 150L
         private const val EMPTY_TEXT_ALPHA = 0.8f
+
+        /** The spring the panel opens on: a little softer than the drawer's own, barely bouncing. */
+        private const val REVEAL_STIFFNESS = 600f
+        private const val REVEAL_DAMPING_RATIO = 0.82f
+
+        // When each part of the panel's content comes in, from the start of its opening.
+        private const val ENTRANCE_TABS_DELAY_MS = 30L
+        private const val ENTRANCE_TABS_DURATION_MS = 200L
+        private const val ENTRANCE_INDICATOR_DELAY_MS = 120L
+        private const val ENTRANCE_INDICATOR_DURATION_MS = 300L
+        private const val ENTRANCE_ICONS_DELAY_MS = 60L
+
+        /** Fading back in after a close that was cut short. */
+        private const val RETURN_DURATION_MS = 150L
+
+        /** Closing, and the share of it that the content takes to fade out. */
+        private const val HIDE_DURATION_MS = 150L
+        private const val HIDE_FADE_SHARE = 0.66f
+
+        private val REVEAL = object : FloatProperty<AppSuggestionsHeaderView>("reveal") {
+            override fun setValue(view: AppSuggestionsHeaderView, value: Float) = view.setReveal(value)
+
+            override fun get(view: AppSuggestionsHeaderView): Float = view.reveal
+        }
+
+        /**
+         * Progress, eased by [interpolator], of a part of an animation that starts [delay]
+         * milliseconds in and lasts [duration], at [time] milliseconds into the animation.
+         */
+        private fun progressAt(time: Float, delay: Long, duration: Long, interpolator: Interpolator): Float = interpolator.getInterpolation(((time - delay) / duration).coerceIn(0f, 1f))
 
         /** Strength of the shadow under the panel, at its edge. */
         private const val SHADOW_ALPHA_LIGHT = 0x24

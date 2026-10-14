@@ -152,5 +152,8 @@
     <!-- The panel's rounded bottom corners, and the soft shadow it casts on the list below. -->
     <dimen name="drawer_suggestions_panel_corner_radius">20dp</dimen>
     <dimen name="drawer_suggestions_panel_shadow_height">10dp</dimen>
+    <!-- How far the panel's content and icons slide down into place as the panel opens. -->
+    <dimen name="drawer_suggestions_content_slide">12dp</dimen>
+    <dimen name="drawer_suggestions_icon_entrance_drop">8dp</dimen>
 
 </resources>

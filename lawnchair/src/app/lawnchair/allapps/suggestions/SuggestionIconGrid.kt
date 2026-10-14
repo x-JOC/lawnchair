@@ -5,8 +5,10 @@ import android.graphics.Canvas
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import com.android.app.animation.Interpolators
 import com.android.launcher3.BubbleTextView
 import com.android.launcher3.R
+import com.android.launcher3.Utilities
 import com.android.launcher3.keyboard.FocusIndicatorHelper.SimpleFocusIndicatorHelper
 import com.android.launcher3.model.data.AppInfo
 
@@ -30,6 +32,9 @@ class SuggestionIconGrid @JvmOverloads constructor(
     private var rows = 0
     private var borders = IntArray(2)
     private var boundApps: List<AppInfo> = emptyList()
+
+    /** How far above its place an icon starts its entrance. */
+    private val iconDrop = resources.getDimension(R.dimen.drawer_suggestions_icon_entrance_drop)
 
     /**
      * Shows [apps] in [rows] rows of [columns] icons. Cells without an app stay invisible, so the
@@ -61,6 +66,47 @@ class SuggestionIconGrid @JvmOverloads constructor(
         removeAllViews()
         boundApps = emptyList()
     }
+
+    /**
+     * How long the staggered entrance of the icons takes, in milliseconds: each icon fades in,
+     * drops into place and grows to its size with a slight overshoot, one after another in reading
+     * order, so from the right in right-to-left layouts.
+     */
+    fun entranceDuration(): Long = ICON_ENTRANCE_DURATION_MS + ICON_ENTRANCE_STAGGER_MS * (visibleIconCount() - 1).coerceAtLeast(0)
+
+    /**
+     * Shows the icons [time] milliseconds into their entrance (see [entranceDuration]): before it
+     * starts, they are hidden; past its end, as usual. Only render properties change, so nothing
+     * is laid out again.
+     */
+    fun setEntranceTime(time: Float) {
+        var index = 0
+        for (i in 0 until childCount) {
+            val icon = getChildAt(i)
+            if (icon.visibility != VISIBLE) continue
+            val progress = ((time - index * ICON_ENTRANCE_STAGGER_MS) / ICON_ENTRANCE_DURATION_MS).coerceIn(0f, 1f)
+            index++
+            icon.alpha = (progress / ICON_FADE_SHARE).coerceAtMost(1f)
+            val scale = Utilities.mapRange(Interpolators.OVERSHOOT_1_7.getInterpolation(progress), ICON_START_SCALE, 1f)
+            icon.scaleX = scale
+            icon.scaleY = scale
+            icon.translationY = (1f - Interpolators.EMPHASIZED_DECELERATE.getInterpolation(progress)) * -iconDrop
+        }
+    }
+
+    /** Ends any entrance, showing the icons as usual. */
+    fun endEntrance() {
+        for (i in 0 until childCount) {
+            getChildAt(i).apply {
+                alpha = 1f
+                scaleX = 1f
+                scaleY = 1f
+                translationY = 0f
+            }
+        }
+    }
+
+    private fun visibleIconCount(): Int = (0 until childCount).count { getChildAt(it).visibility == VISIBLE }
 
     private fun ensureCells(inflater: LayoutInflater, count: Int) {
         val launcher = launcher ?: return
@@ -123,6 +169,13 @@ class SuggestionIconGrid @JvmOverloads constructor(
     private fun cellHeight(): Int = launcher?.deviceProfile?.allAppsProfile?.cellHeightPx ?: 0
 
     private companion object {
+        const val ICON_ENTRANCE_DURATION_MS = 280L
+        const val ICON_ENTRANCE_STAGGER_MS = 22L
+
+        /** The share of an icon's entrance it takes to fade in. */
+        const val ICON_FADE_SHARE = 0.6f
+        const val ICON_START_SCALE = 0.72f
+
         /**
          * Column borders for [spanCount] columns over [totalSpace] pixels, spreading the remainder
          * the same way as `GridLayoutManager.calculateItemBorders`, which lays out the A-Z grid.

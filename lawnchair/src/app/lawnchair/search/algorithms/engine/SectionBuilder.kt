@@ -251,29 +251,3 @@ data object SearchSettingsSectionBuilder : SectionBuilder {
         return targets
     }
 }
-
-/**
- * Zero-state app suggestions shown as switchable tabs (frequent / recent / new). Emits the
- * tab-bar control followed by the icons for the currently selected tab; the icons flow into
- * the same grid as the app drawer (`numShownAllAppsColumns` per row) automatically.
- */
-data object SuggestedAppsSectionBuilder : SectionBuilder {
-    override fun build(
-        context: Context,
-        factory: SearchTargetFactory,
-        results: List<SearchResult>,
-    ): List<SearchTargetCompat> {
-        val tabs = results.filterIsInstance<SearchResult.Action.SuggestionTabs>().firstOrNull()
-            ?: return emptyList()
-
-        val targets = mutableListOf<SearchTargetCompat>()
-        targets.add(factory.createSuggestionTabsTarget(tabs.selected, tabs.selectedEmpty))
-
-        // The provider already emits only the selected tab's apps, so no tab filter is needed here.
-        results.filterIsInstance<SearchResult.SuggestedApp>()
-            .forEach { targets.add(factory.createAppSearchTarget(it.data, asRow = false)) }
-
-        targets.add(factory.createHeaderTarget(SPACE))
-        return targets
-    }
-}

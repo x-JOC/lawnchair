@@ -222,4 +222,37 @@
         <item name="folderCellHeight">83dp</item>
         <item name="folderCellWidth">58dp</item>
     </style>
+
+    <!-- One of the Frequent / Recent / New tabs at the top of the app drawer. SuggestionTabBar
+         sets the text size in code so all three labels share one size. -->
+    <style name="DrawerSuggestionTab">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">@dimen/drawer_suggestions_tab_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/drawer_suggestions_tab_padding_horizontal</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:textSize">@dimen/drawer_suggestions_tab_text_size_max</item>
+        <item name="android:background">@drawable/drawer_suggestion_tab_background</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <!-- A tap must not take focus from the search box, so the keyboard stays up. -->
+        <item name="android:focusableInTouchMode">false</item>
+        <item name="customFontType">@id/font_body_medium</item>
+    </style>
+
+    <!-- Shown in place of the icons when the selected suggestion tab has no apps. -->
+    <style name="DrawerSuggestionEmptyText">
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">@dimen/drawer_suggestions_empty_padding_horizontal</item>
+        <item name="android:paddingEnd">@dimen/drawer_suggestions_empty_padding_horizontal</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:accessibilityLiveRegion">polite</item>
+        <item name="customFontType">@id/font_body</item>
+    </style>
 </resources>

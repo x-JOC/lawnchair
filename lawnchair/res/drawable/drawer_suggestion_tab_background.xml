@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Press feedback for the app drawer suggestion tabs: a rounded ripple around the label, with the
+     drawer tab pill's corner radius. The tabs themselves have no background. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?android:attr/colorControlHighlight">
+    <item android:id="@android:id/mask">
+        <inset
+            android:insetLeft="@dimen/drawer_suggestions_tab_ripple_inset_horizontal"
+            android:insetTop="@dimen/drawer_suggestions_tab_ripple_inset_vertical"
+            android:insetRight="@dimen/drawer_suggestions_tab_ripple_inset_horizontal"
+            android:insetBottom="@dimen/drawer_suggestions_tab_ripple_inset_vertical">
+            <shape android:shape="rectangle">
+                <corners android:radius="@dimen/all_apps_header_pill_corner_radius" />
+                <solid android:color="@android:color/white" />
+            </shape>
+        </inset>
+    </item>
+</ripple>

@@ -832,13 +832,14 @@
     <!-- Personal build: Arabic for strings not yet translated on Crowdin -->
     <string name="enable_subgrid_positioning_label">الموضع بنصف خانة</string>
     <string name="enable_subgrid_positioning_description">ضع العناصر وغيّر حجمها بمواضع نصف خانة في الشاشة الرئيسية. توضع العناصر بحرية وقد تتداخل</string>
-    <string name="search_suggested_frequent_title">الأكثر استخدامًا</string>
-    <string name="search_suggested_recent_title">الأخيرة</string>
-    <string name="search_suggested_new_title">جديدة/محدّثة</string>
-    <string name="search_pref_suggested_apps_title">تبويبات الاقتراحات في البحث</string>
-    <string name="search_pref_suggested_apps_description">اعرض التطبيقات الأكثر استخدامًا وآخر ما فتحته والجديدة أو المحدّثة عندما يكون مربع البحث فارغًا</string>
-    <string name="search_suggested_empty_launches">ستظهر هنا التطبيقات التي تفتحها من Lawnchair</string>
-    <string name="search_suggested_empty_new">لا توجد تطبيقات مثبّتة أو محدّثة خلال آخر 30 يومًا</string>
-    <string name="search_suggested_tab_role">تبويب</string>
+    <string name="drawer_suggestions_tab_frequent">الأكثر استخدامًا</string>
+    <string name="drawer_suggestions_tab_recent">الأخيرة</string>
+    <string name="drawer_suggestions_tab_new">جديدة/محدّثة</string>
+    <string name="drawer_suggestions_tab_role">تبويب</string>
+    <string name="drawer_suggestions_empty_frequent">لا توجد تطبيقات مستخدمة بكثرة بعد</string>
+    <string name="drawer_suggestions_empty_recent">لا توجد تطبيقات مفتوحة مؤخرًا</string>
+    <string name="drawer_suggestions_empty_new">لا توجد تطبيقات جديدة أو محدّثة</string>
+    <string name="drawer_suggestion_tabs_title">تبويبات الاقتراحات</string>
+    <string name="drawer_suggestion_tabs_description">التطبيقات الأكثر استخدامًا والأخيرة والجديدة أو المحدّثة أعلى درج التطبيقات</string>
     <string name="max_apps_result_count_all">الكل</string>
 </resources>

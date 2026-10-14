@@ -31,6 +31,7 @@ import android.widget.LinearLayout;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView;
 import app.lawnchair.preferences2.PreferenceManager2;
 import com.android.launcher3.BubbleTextView;
 import com.android.launcher3.DeviceProfile;
@@ -122,7 +123,11 @@ public class PredictionRowView<T extends Context & ActivityContext>
     }
 
     private void updateVisibility() {
-        boolean enabled = mPredictionsEnabled && PreferenceCacheExtensionsKt.firstCached(prefs2.getShowSuggestedAppsInDrawer());
+        // LC-Note: the drawer's suggestion tabs (AppSuggestionsHeaderView) take this row's place
+        // while they are on.
+        boolean enabled = mPredictionsEnabled
+                && PreferenceCacheExtensionsKt.firstCached(prefs2.getShowSuggestedAppsInDrawer())
+                && !AppSuggestionsHeaderView.isEnabledFor(getContext());
         setVisibility(enabled ? VISIBLE : GONE);
         if (mActivityContext.getAppsView() != null) {
             if (enabled) {

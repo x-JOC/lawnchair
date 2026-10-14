@@ -184,7 +184,7 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
             val appsCopy = apps.data.toList()
             currentJob?.cancel()
             currentJob = coroutineScope.launch {
-                val snapshot = SuggestedAppsProvider.loadSnapshot(context, appsCopy, launchLimit = limit)
+                val snapshot = SuggestedAppsProvider.loadSnapshot(context, appsCopy, limit = limit)
                 if (token != requestSeq.get()) return@launch
                 val updated = suggestionState.updateAndGet { current ->
                     current.copy(snapshot = snapshot, selectedTab = resolveTab(current, snapshot))

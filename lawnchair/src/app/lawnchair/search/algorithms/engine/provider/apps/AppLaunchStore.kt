@@ -20,7 +20,10 @@ import com.android.launcher3.util.Executors.ORDERED_BG_EXECUTOR
 import java.io.File
 import java.io.FileNotFoundException
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -53,13 +56,16 @@ class AppLaunchStore private constructor(private val context: Context) {
         save()
     }
 
-    private val revisionCounter = AtomicInteger(0)
+    private val revisionState = MutableStateFlow(0)
 
     /**
      * Changes whenever a launch is recorded, so a caller holding suggestions computed from an
      * older history can tell they are out of date.
      */
-    val revision: Int get() = revisionCounter.get()
+    val revision: Int get() = revisionState.value
+
+    /** [revision] as a flow, for UI that refreshes its suggestions after each recorded launch. */
+    val revisionFlow: StateFlow<Int> = revisionState.asStateFlow()
 
     /**
      * Records one launch of [info] if it is an app of the current user. Shortcuts, widgets, search
@@ -80,7 +86,7 @@ class AppLaunchStore private constructor(private val context: Context) {
                 map[key] = AppSuggestionRanker.recordLaunch(map[key], key, nowMs)
                 if (map.size > MAX_ENTRIES + PRUNE_SLACK) pruneLocked(map, nowMs)
             }
-            revisionCounter.incrementAndGet()
+            revisionState.update { it + 1 }
             scheduleSave()
         }
     }

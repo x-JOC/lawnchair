@@ -36,6 +36,7 @@ import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
+import app.lawnchair.allapps.suggestions.AppSuggestionsHeaderView
 import app.lawnchair.launcher
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
@@ -205,7 +206,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                 val actions = QsbActions(
                     onQsbClick = {
                         if (input.text.isNullOrEmpty()) {
-                            searchAlgorithm?.doZeroStateSearch(this@AllAppsSearchInput)
+                            showZeroState()
                         }
                         input.requestFocus()
                         input.showKeyboard()
@@ -228,7 +229,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
 
                             QsbIconId.CLEAR -> {
                                 input.reset()
-                                searchAlgorithm?.doZeroStateSearch(this@AllAppsSearchInput)
+                                showZeroState()
                                 updateHint()
                             }
 
@@ -282,7 +283,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                 }
 
                 if (input.text.toString().isEmpty() && isDirectFocus) {
-                    searchAlgorithm?.doZeroStateSearch(this)
+                    showZeroState()
                     setDirectFocus(false)
                 }
 
@@ -318,7 +319,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             afterTextChanged = {
                 updateHint()
                 if (input.text.isNullOrEmpty() && input.hasFocus() && !input.isResetting) {
-                    searchAlgorithm?.doZeroStateSearch(this)
+                    showZeroState()
                 }
                 if (input.text.toString() == "/lawnchairdebug") {
                     val enableDebugMenu = prefs.enableDebugMenu
@@ -339,6 +340,24 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             // GONE so top margin/height do not reserve empty space above the app list.
             isGone = true
             layoutParams.height = 0
+        }
+    }
+
+    /**
+     * What an empty, focused search box shows. With the drawer's suggestion tabs on, the drawer
+     * itself is the empty state, as in Nova: the tabs and the app list stay visible with the
+     * keyboard up, and only typing switches to results. Otherwise the search algorithm decides
+     * (search history, or the drawer).
+     */
+    private fun showZeroState() {
+        if (AppSuggestionsHeaderView.isEnabledFor(context)) {
+            // Cancel first, so results of a query that was just cleared can't arrive late and
+            // cover the drawer again.
+            searchAlgorithm?.cancel(true)
+            // Keeps focus and the keyboard while the query is empty (onClearSearchResult).
+            clearSearchResult()
+        } else {
+            searchAlgorithm?.doZeroStateSearch(this)
         }
     }
 

@@ -42,14 +42,15 @@ object SuggestedAppsProvider {
 
     /**
      * Computes all three suggestion lists in one pass, over the apps that can actually be opened:
-     * not hidden, not still installing, and not Lawnchair itself. Frequent and Recent are capped at
-     * [launchLimit]; New lists every app installed or updated in the last 30 days.
-     * [nowMs] is injected so the time reference is the same for every list.
+     * not hidden, not still installing, and not Lawnchair itself. Each list holds at most [limit]
+     * apps. [installTimes] can be passed in by a caller that caches them between loads (see
+     * [loadInstallTimes]), and [nowMs] is injected so the time reference is the same for every list.
      */
     fun loadSnapshot(
         context: Context,
         apps: List<AppInfo>,
-        launchLimit: Int,
+        limit: Int,
+        installTimes: Map<String, AppSuggestionRanker.InstallInfo> = loadInstallTimes(context),
         nowMs: Long = System.currentTimeMillis(),
     ): AppSuggestions {
         val launchStore = AppLaunchStore.getInstance(context)
@@ -87,25 +88,27 @@ object SuggestedAppsProvider {
         byKey.values.forEach { app ->
             app.componentName?.packageName?.let { byPackage.putIfAbsent(it, app) }
         }
-        val installTimes = installTimes(context)
         val installs = byPackage.keys.mapNotNull { installTimes[it] }
 
-        val limit = launchLimit.coerceAtLeast(0)
+        val maxApps = limit.coerceAtLeast(0)
         return AppSuggestions(
             byTab = mapOf(
-                SuggestionTab.FREQUENT to AppSuggestionRanker.rankFrequent(launches, nowMs, limit)
+                SuggestionTab.FREQUENT to AppSuggestionRanker.rankFrequent(launches, nowMs, maxApps)
                     .mapNotNull { byKey[it] },
-                SuggestionTab.RECENT to AppSuggestionRanker.rankRecent(launches, limit)
+                SuggestionTab.RECENT to AppSuggestionRanker.rankRecent(launches, maxApps)
                     .mapNotNull { byKey[it] },
-                SuggestionTab.NEW to AppSuggestionRanker.rankNew(installs, nowMs, NEW_APP_HORIZON_MS, Int.MAX_VALUE)
+                SuggestionTab.NEW to AppSuggestionRanker.rankNew(installs, nowMs, NEW_APP_HORIZON_MS, maxApps)
                     .mapNotNull { byPackage[it] },
             ),
             launchRevision = revision,
         )
     }
 
-    /** Install and update times of every package installed for the current user, in one query. */
-    private fun installTimes(context: Context): Map<String, AppSuggestionRanker.InstallInfo> = try {
+    /**
+     * Install and update times of every package installed for the current user, in one
+     * package-manager query. Blocking: call it from a background thread.
+     */
+    fun loadInstallTimes(context: Context): Map<String, AppSuggestionRanker.InstallInfo> = try {
         context.packageManager.getInstalledPackages(0).associate {
             it.packageName to AppSuggestionRanker.InstallInfo(it.packageName, it.firstInstallTime, it.lastUpdateTime)
         }

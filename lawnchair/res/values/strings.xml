@@ -968,6 +968,18 @@
     <!-- Accessibility role read out for each of the suggestion tabs, e.g. "Recent, selected, Tab". -->
     <string name="search_suggested_tab_role">Tab</string>
 
+    <!-- App drawer suggestion tabs: frequent, recent and new or updated apps above the app list. -->
+    <string name="drawer_suggestions_tab_frequent">Frequent</string>
+    <string name="drawer_suggestions_tab_recent">Recent</string>
+    <string name="drawer_suggestions_tab_new">New/Updated</string>
+    <!-- Accessibility role read out for each suggestion tab, e.g. "Recent, selected, Tab, 2 of 3". -->
+    <string name="drawer_suggestions_tab_role">Tab</string>
+    <string name="drawer_suggestions_empty_frequent">No frequent apps yet</string>
+    <string name="drawer_suggestions_empty_recent">No recent apps yet</string>
+    <string name="drawer_suggestions_empty_new">No new or updated apps</string>
+    <string name="drawer_suggestion_tabs_title">Suggestion tabs</string>
+    <string name="drawer_suggestion_tabs_description">Frequent, recent and new or updated apps at the top of the app drawer</string>
+
     <string name="perform_wide_search_title">Device search</string>
     <string name="perform_wide_search_description">Search your phone contacts, files, and settings</string>
 

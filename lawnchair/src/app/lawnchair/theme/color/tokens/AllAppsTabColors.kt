@@ -4,10 +4,7 @@ import android.content.Context
 import androidx.core.graphics.luminance
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
-import app.lawnchair.theme.ThemeProvider
 import app.lawnchair.theme.UiColorMode
-import com.android.launcher3.R
-import com.android.launcher3.util.Themes
 import dev.kdrag0n.monet.theme.ColorScheme
 
 /** Shared colors for Personal/Work tabs in the app drawer. */
@@ -27,13 +24,6 @@ object AllAppsTabColors {
             ColorTokens.AllAppsTabBackgroundSelected.resolveColor(context, scheme, uiColorMode)
         }
     }
-
-    /** [selectedBackground] for the current color scheme and the theme of [context]. */
-    fun selectedBackground(context: Context): Int = selectedBackground(
-        context,
-        ThemeProvider.INSTANCE.get(context).colorScheme,
-        UiColorMode(Themes.getAttrInteger(context, R.attr.uiColorMode)),
-    )
 
     /**
      * Text color for the selected tab, chosen for contrast against [selectedBackground].

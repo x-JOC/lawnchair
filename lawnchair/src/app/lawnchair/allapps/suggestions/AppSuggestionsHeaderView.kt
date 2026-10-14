@@ -22,7 +22,11 @@ import app.lawnchair.LawnchairLauncher
 import app.lawnchair.font.FontManager
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
-import app.lawnchair.theme.color.tokens.AllAppsTabColors
+import app.lawnchair.theme.color.tokens.ColorTokens
+import app.lawnchair.theme.color.tokens.DayNightColorToken
+import app.lawnchair.theme.color.tokens.Shade
+import app.lawnchair.theme.color.tokens.Swatch
+import app.lawnchair.theme.color.tokens.SwatchColorToken
 import app.lawnchair.util.shouldUseAlternateAllAppsTextColor
 import com.android.app.animation.Interpolators
 import com.android.launcher3.DeviceProfile
@@ -40,6 +44,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -56,8 +61,11 @@ import kotlinx.coroutines.launch
  * displays it stays gone.
  *
  * The header keeps one height for all tabs (enough rows for the fullest tab), so switching tabs
- * never moves the list. A new height is only applied while the drawer is off screen, because the
- * drawer resets its list padding and scrolls back to the top whenever the header height changes.
+ * never moves the list. When every tab is empty it only has room for a one-line message. A new
+ * height is only applied while the drawer is off screen, because the drawer resets its list
+ * padding and scrolls back to the top whenever the header height changes. That also drops a
+ * position kept by "remember scroll position", which is accepted: it only happens when the number
+ * of rows changes, not on every opening.
  */
 class AppSuggestionsHeaderView @JvmOverloads constructor(
     context: Context,
@@ -70,6 +78,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private val launcher: LawnchairLauncher? = context.findLawnchairLauncher()
     private val featureOn = launcher != null && isEnabledFor(context)
     private val tabBarHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_tab_bar_height)
+    private val emptyHeight = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_empty_height)
     private val loader by lazy { AppSuggestionsLoader(context) }
 
     private lateinit var tabBar: SuggestionTabBar
@@ -83,7 +92,13 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     /** The newest suggestions, shown as soon as no launch animation is running. */
     private var latest: AppSuggestions? = null
 
-    /** Rows of icons the header is measured for; 0 until it is first shown. */
+    /** Whether the header has been sized for some suggestions; it stays gone until then. */
+    private var sized = false
+
+    /**
+     * Rows of icons the header is measured for. 0 when every tab is empty: the header then only
+     * has room for the empty-tab message.
+     */
     private var reservedRows = 0
 
     /** The height last reported to the drawer through [FloatingHeaderView.onHeightUpdated]. */
@@ -96,6 +111,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private var resizeOnNextLoad = false
 
     private var uiPaused = false
+    private val resumeUiUpdates = Runnable { setUiUpdatesPaused(false) }
     private var selectedTab = lastPickedTab ?: SuggestionTab.FREQUENT
 
     @StringRes
@@ -118,11 +134,11 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         header = headerView
     }
 
-    override fun getExpectedHeight(): Int = if (visibility == GONE) 0 else tabBarHeight + reservedRows * cellHeight() + paddingTop + paddingBottom
+    override fun getExpectedHeight(): Int = if (visibility == GONE) 0 else tabBarHeight + contentHeight() + paddingTop + paddingBottom
 
     override fun shouldDraw(): Boolean = visibility != GONE
 
-    override fun hasVisibleContent(): Boolean = featureOn && reservedRows > 0
+    override fun hasVisibleContent(): Boolean = featureOn && sized
 
     override fun isVisible(): Boolean = visibility == VISIBLE
 
@@ -173,6 +189,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         val launcher = launcher?.takeIf { featureOn } ?: return
+        removeCallbacks(resumeUiUpdates)
         scope?.cancel()
         scope = null
         refreshJob = null
@@ -183,10 +200,15 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         }
         launcher.stateManager.removeStateListener(stateListener)
         launcher.lifecycle.removeObserver(lifecycleObserver)
+        listOf(grid, emptyText).forEach {
+            it.animate().cancel()
+            it.alpha = 1f
+        }
     }
 
     override fun onAppsUpdated() {
-        refresh()
+        // The app list changes in bursts, for example at every progress step of an install.
+        refresh(debounce = true)
     }
 
     override fun onDeviceProfileChanged(dp: DeviceProfile) {
@@ -201,25 +223,45 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     /**
      * Pauses updates while an app opens, so the icon being launched doesn't change or move under
-     * the launch animation. Called by [LawnchairLauncher.startActivitySafely].
+     * the launch animation. Called by [LawnchairLauncher.startActivitySafely], which resumes them
+     * when the launch animation ends.
+     *
+     * That end callback doesn't come for every launch: without a launch animation (animations off,
+     * or no remote transition, which is the case when Lawnchair isn't the recents provider) it is
+     * never run. So a pause also ends after [MAX_UI_PAUSE_MS], when the launcher stops, and when the
+     * drawer starts to open, whichever comes first.
      */
     fun setUiUpdatesPaused(paused: Boolean) {
+        removeCallbacks(resumeUiUpdates)
+        if (paused) postDelayed(resumeUiUpdates, MAX_UI_PAUSE_MS)
+        if (uiPaused == paused) return
         uiPaused = paused
         if (!paused) showLatest(allowHeightChange = !isDrawerOnScreen())
     }
 
+    /** Ends a pause from [setUiUpdatesPaused] without showing anything; the caller does. */
+    private fun clearUiPause() {
+        removeCallbacks(resumeUiUpdates)
+        uiPaused = false
+    }
+
     // Data
 
-    private fun refresh() {
+    /**
+     * Loads the suggestions again and shows them. With [debounce], waits for [REFRESH_DEBOUNCE_MS]
+     * first, so a burst of calls loads once; any newer call replaces a pending or running load.
+     */
+    private fun refresh(debounce: Boolean = false) {
         val launcher = launcher ?: return
         val currentScope = scope ?: return
-        val apps = launcher.appsView?.appsStore?.apps ?: return
-        // Empty until the app model has loaded; onAppsUpdated() comes back here then.
-        if (apps.isEmpty()) return
-        val dp = launcher.deviceProfile
-        val limit = dp.numShownAllAppsColumns * maxRows(dp)
         refreshJob?.cancel()
         refreshJob = currentScope.launch {
+            if (debounce) delay(REFRESH_DEBOUNCE_MS)
+            val apps = launcher.appsView?.appsStore?.apps ?: return@launch
+            // Empty until the app model has loaded; onAppsUpdated() comes back here then.
+            if (apps.isEmpty()) return@launch
+            val dp = launcher.deviceProfile
+            val limit = dp.numShownAllAppsColumns * maxRows(dp)
             val snapshot = try {
                 loader.load(apps, limit)
             } catch (e: CancellationException) {
@@ -247,13 +289,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         if (uiPaused) return
         if (allowHeightChange) {
             reservedRows = snapshot.rowsNeeded(dp.numShownAllAppsColumns, maxRows(dp))
+            sized = true
+            // Until the user picks a tab, open on Frequent, or on the first tab with apps. Not
+            // while the drawer is on screen, so the tab doesn't change under the user.
+            if (lastPickedTab == null) selectedTab = snapshot.firstNonEmptyTab(SuggestionTab.FREQUENT)
         }
-        if (reservedRows == 0) return
-        // Until the user picks a tab, open on Frequent, or on the first tab with apps. Not while
-        // the drawer is on screen, so the tab doesn't change under the user.
-        if (lastPickedTab == null && allowHeightChange) {
-            selectedTab = snapshot.firstNonEmptyTab(SuggestionTab.FREQUENT)
-        }
+        if (!sized) return
         if (visibility == GONE) visibility = VISIBLE
         bindSelectedTab(animate = false)
         val height = getExpectedHeight()
@@ -275,23 +316,28 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         bindSelectedTab(animate = true)
     }
 
+    /** Shows the selected tab's apps, or its empty-tab message. [animate] for a tab the user picked. */
     private fun bindSelectedTab(animate: Boolean) {
         val snapshot = latest ?: return
         val columns = launcher?.deviceProfile?.numShownAllAppsColumns ?: return
-        val apps = snapshot.appsFor(selectedTab).take(columns * reservedRows)
+        val tabApps = snapshot.appsFor(selectedTab)
         tabBar.select(selectedTab, animate)
-        grid.bind(apps, columns, reservedRows)
+        grid.bind(tabApps.take(columns * reservedRows), columns, reservedRows)
 
-        val isEmpty = apps.isEmpty()
-        emptyText.isVisible = isEmpty
+        // The message only for a tab that really has no apps. A tab whose first apps arrive while
+        // the drawer is open has no rows for them yet, and stays blank until the header grows.
+        val isEmpty = tabApps.isEmpty()
+        // TalkBack reads the message when the user switches to an empty tab, but not when the
+        // header is updated in the background, for example while the drawer is closed.
+        emptyText.accessibilityLiveRegion = if (animate) ACCESSIBILITY_LIVE_REGION_POLITE else ACCESSIBILITY_LIVE_REGION_NONE
         if (isEmpty) {
             val textRes = emptyTextFor(selectedTab)
-            // Only on a change: the text is a live region, and TalkBack reads every update.
             if (textRes != emptyTextRes) {
                 emptyTextRes = textRes
                 emptyText.setText(textRes)
             }
         }
+        emptyText.isVisible = isEmpty
 
         val shown: View = if (isEmpty) emptyText else grid
         shown.animate().cancel()
@@ -310,26 +356,25 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     // Looks
 
     /**
-     * Label colors follow the drawer's icon labels (including the alternate color on light or
-     * see-through drawers) and the indicator uses the drawer's tab color, so the header matches
-     * custom drawer and tab colors.
+     * The selected tab uses the colors of Lawnchair's selected chips ([PILL_COLOR] and
+     * [SELECTED_LABEL_COLOR]), which follow the wallpaper or the custom accent color. The other
+     * labels and the empty-tab message use the color of the drawer's icon labels, including the
+     * alternate color on light or see-through drawers, so they match custom drawer colors.
      */
     private fun applyColors() {
-        val useAlternate = shouldUseAlternateAllAppsTextColor(context)
-        val selectedColor = Themes.getAttrColor(
-            context,
-            if (useAlternate) R.attr.allAppsAlternateTextColor else android.R.attr.textColorPrimary,
-        )
         val labelColor = Themes.getAttrColor(
             context,
-            if (useAlternate) R.attr.allAppsAlternateTextColor else android.R.attr.textColorSecondary,
+            if (shouldUseAlternateAllAppsTextColor(context)) R.attr.allAppsAlternateTextColor else android.R.attr.textColorSecondary,
         )
-        val unselectedColor = ColorUtils.setAlphaComponent(
-            labelColor,
-            (Color.alpha(labelColor) * UNSELECTED_TEXT_ALPHA).roundToInt(),
+        tabBar.applyColors(
+            selectedTextColor = SELECTED_LABEL_COLOR.resolveColor(context),
+            unselectedTextColor = labelColor,
+            pillColor = PILL_COLOR.resolveColor(context),
+            rippleColor = Themes.getAttrColor(context, android.R.attr.colorControlHighlight),
         )
-        tabBar.applyColors(selectedColor, unselectedColor, AllAppsTabColors.selectedBackground(context))
-        emptyText.setTextColor(unselectedColor)
+        emptyText.setTextColor(
+            ColorUtils.setAlphaComponent(labelColor, (Color.alpha(labelColor) * EMPTY_TEXT_ALPHA).roundToInt()),
+        )
     }
 
     /**
@@ -345,10 +390,15 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     private fun cellHeight(): Int = launcher?.deviceProfile?.allAppsProfile?.cellHeightPx ?: 0
 
+    /** Height below the tabs: the rows of icons, or one line for the message if every tab is empty. */
+    private fun contentHeight(): Int = if (reservedRows > 0) reservedRows * cellHeight() else emptyHeight
+
     private val stateListener = object : StateManager.StateListener<LauncherState> {
         override fun onStateTransitionStart(toState: LauncherState) {
             if (toState == LauncherState.ALL_APPS) {
                 applyColors()
+                // Any launch that paused the updates is over by the time the drawer opens again.
+                clearUiPause()
                 // The drawer is only starting to open and its list is at the top, so a new height
                 // doesn't move anything the user is looking at.
                 showLatest(allowHeightChange = true)
@@ -363,6 +413,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     private val lifecycleObserver = object : DefaultLifecycleObserver {
         override fun onStop(owner: LifecycleOwner) {
+            // The opened app now covers the launcher, so its launch no longer needs the pause,
+            // and the header may change height while nobody sees it.
+            clearUiPause()
             showLatest(allowHeightChange = true)
         }
     }
@@ -370,18 +423,37 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     companion object {
         private const val TAG = "AppSuggestionsHeader"
         private const val TAB_FADE_DURATION_MS = 150L
-        private const val UNSELECTED_TEXT_ALPHA = 0.7f
+        private const val EMPTY_TEXT_ALPHA = 0.8f
+
+        /**
+         * The selected tab's pill and label: the colors of a selected chip in Lawnchair's settings
+         * (`ui/preferences/components/layout/Chip.kt`), that is Material's secondary container
+         * and primary colors.
+         */
+        private val PILL_COLOR = DayNightColorToken(ColorTokens.Accent2_100, SwatchColorToken(Swatch.Accent2, Shade.S700))
+        private val SELECTED_LABEL_COLOR = DayNightColorToken(ColorTokens.Accent1_600, ColorTokens.Accent1_200)
+
+        /** Longer than any launch animation; see [setUiUpdatesPaused]. */
+        private const val MAX_UI_PAUSE_MS = 2000L
+
+        /** See [refresh]. */
+        private const val REFRESH_DEBOUNCE_MS = 300L
 
         /** The tab the user picked last. Kept for the whole process, so it survives the launcher being recreated. */
         private var lastPickedTab: SuggestionTab? = null
 
         /**
          * Whether the suggestion tabs are shown in the drawer of [context]: only in Lawnchair's own
-         * launcher, and only while the setting is on. The suggested apps row hides itself then.
+         * launcher, and only while the setting is on and the drawer has its search bar. Without the
+         * search bar and a work profile, the drawer hides its whole header, so the tabs would have
+         * no place; the settings say so. The suggested apps row hides itself while the tabs show.
          */
         @JvmStatic
-        fun isEnabledFor(context: Context): Boolean = context.findLawnchairLauncher() != null &&
-            PreferenceManager2.getInstance(context).drawerSuggestionTabs.firstCached()
+        fun isEnabledFor(context: Context): Boolean {
+            if (context.findLawnchairLauncher() == null) return false
+            val prefs = PreferenceManager2.getInstance(context)
+            return prefs.drawerSuggestionTabs.firstCached() && !prefs.hideAppDrawerSearchBar.firstCached()
+        }
 
         /** Two rows of icons, or one on a phone in landscape, where the screen is short. */
         private fun maxRows(dp: DeviceProfile): Int = if (dp.deviceProperties.isPhone && dp.deviceProperties.isLandscape) 1 else 2
@@ -410,10 +482,11 @@ internal fun Context.findLawnchairLauncher(): LawnchairLauncher? {
 }
 
 /**
- * Rows of icons for the fullest tab, between 1 (room for the empty-tab message) and [maxRows], so
- * the header keeps one height whichever tab is selected.
+ * Rows of icons for the fullest tab, at most [maxRows], so the header keeps one height whichever
+ * tab is selected. 0 when every tab is empty.
  */
 internal fun AppSuggestions.rowsNeeded(columns: Int, maxRows: Int): Int {
     val mostApps = SuggestionTab.entries.maxOf { appsFor(it).size }
-    return ((mostApps + columns - 1) / columns.coerceAtLeast(1)).coerceIn(1, maxRows)
+    val perRow = columns.coerceAtLeast(1)
+    return ((mostApps + perRow - 1) / perRow).coerceIn(0, maxRows)
 }

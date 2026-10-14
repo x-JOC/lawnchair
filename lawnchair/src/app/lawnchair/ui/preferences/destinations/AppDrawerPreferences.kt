@@ -89,14 +89,24 @@ fun AppDrawerPreferences(
                 subtitle = resources.getQuantityString(R.plurals.apps_count, hiddenApps.size, hiddenApps.size),
             )
             SearchBarPreference(SearchRoute.DRAWER_SEARCH, showLabel = false)
+            // The suggestion tabs need the drawer's search bar (AppSuggestionsHeaderView.isEnabledFor).
+            val suggestionTabsAdapter = prefs2.drawerSuggestionTabs.getAdapter()
+            val searchBarHidden = prefs2.hideAppDrawerSearchBar.getAdapter().state.value
+            val suggestionTabsOn = suggestionTabsAdapter.state.value && !searchBarHidden
             NavigationActionPreference(
                 label = stringResource(R.string.suggestion_pref_screen_title),
                 destination = Predictions,
+                // The suggestions still apply elsewhere, such as the taskbar's app drawer.
+                subtitle = if (suggestionTabsOn) stringResource(R.string.drawer_suggestion_tabs_replace_suggestions) else null,
             )
             SwitchPreference(
-                adapter = prefs2.drawerSuggestionTabs.getAdapter(),
+                checked = suggestionTabsOn,
+                onCheckedChange = suggestionTabsAdapter::onChange,
                 label = stringResource(R.string.drawer_suggestion_tabs_title),
-                description = stringResource(R.string.drawer_suggestion_tabs_description),
+                description = stringResource(
+                    if (searchBarHidden) R.string.drawer_suggestion_tabs_needs_search_bar else R.string.drawer_suggestion_tabs_description,
+                ),
+                enabled = !searchBarHidden,
             )
             AppDrawerHapticFeedbackPreference()
         }

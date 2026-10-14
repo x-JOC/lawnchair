@@ -96,8 +96,6 @@ fun AppDrawerPreferences(
             NavigationActionPreference(
                 label = stringResource(R.string.suggestion_pref_screen_title),
                 destination = Predictions,
-                // The suggestions still apply elsewhere, such as the taskbar's app drawer.
-                subtitle = if (suggestionTabsOn) stringResource(R.string.drawer_suggestion_tabs_replace_suggestions) else null,
             )
             SwitchPreference(
                 checked = suggestionTabsOn,

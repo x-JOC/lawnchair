@@ -27,6 +27,7 @@ import android.os.Parcelable
 import android.os.UserHandle
 import androidx.annotation.FloatRange
 import androidx.annotation.IntDef
+import app.lawnchair.allapps.views.SearchResultView
 import app.lawnchair.search.adapter.SearchTargetCompat.SearchResultType
 import kotlinx.parcelize.Parcelize
 
@@ -127,6 +128,32 @@ data class SearchTargetCompat(
         check(published <= 1) {
             "Only one of SearchAction, ShortcutInfo, AppWidgetProviderInfo, SliceUri can be assigned in a SearchTargetCompat."
         }
+    }
+
+    /**
+     * Returns true if [other] renders and behaves the same as this target in a search result row,
+     * so the row does not need to be bound again.
+     *
+     * Structural equality cannot answer this: [extras] is a new [Bundle] and [shortcutInfo] a new
+     * [ShortcutInfo] for every result set, and both compare by reference. This compares the fields
+     * the search result views read instead, [extras] only by the keys they read.
+     */
+    fun isContentSameAs(other: SearchTargetCompat): Boolean {
+        if (this === other) return true
+        return id == other.id &&
+            resultType == other.resultType &&
+            layoutType == other.layoutType &&
+            parentId == other.parentId &&
+            isHidden == other.isHidden &&
+            packageName == other.packageName &&
+            userHandle == other.userHandle &&
+            sliceUri == other.sliceUri &&
+            appWidgetProviderInfo?.provider == other.appWidgetProviderInfo?.provider &&
+            shortcutInfo.hasSameContentAs(other.shortcutInfo) &&
+            (searchAction?.isContentSameAs(other.searchAction) ?: (other.searchAction == null)) &&
+            BOOLEAN_CONTENT_EXTRAS.all { extras.getBoolean(it, false) == other.extras.getBoolean(it, false) } &&
+            STRING_CONTENT_EXTRAS.all { extras.getString(it) == other.extras.getString(it) } &&
+            INT_CONTENT_EXTRAS.all { extras.getInt(it, 0) == other.extras.getInt(it, 0) }
     }
 
     private constructor(from: SearchTarget) :
@@ -298,6 +325,46 @@ data class SearchTargetCompat(
         const val RESULT_TYPE_EMPTY_RESULT = 1 shl 11
         const val RESULT_TYPE_SEARCH_SETTINGS = 1 shl 12
 
+        /**
+         * [extras] key for a stable identity of an icon whose pixels do not follow from the target
+         * id and title (a contact photo, a file thumbnail). Only read by [isContentSameAs].
+         */
+        const val EXTRA_ICON_KEY = "icon_key"
+
+        // The extras the search result views read, with the same getters. Keep in sync with them.
+        private val BOOLEAN_CONTENT_EXTRAS = arrayOf(
+            // SearchResultView.getFlags; the quick-launch flag also picks the row background.
+            SearchResultView.EXTRA_HIDE_SUBTITLE,
+            SearchResultView.EXTRA_HIDE_ICON,
+            SearchResultView.EXTRA_QUICK_LAUNCH,
+        )
+        private val STRING_CONTENT_EXTRAS = arrayOf(
+            // SearchResultIcon.bind
+            SearchResultView.EXTRA_ICON_COMPONENT_KEY,
+            // SearchResultIcon: app component class, also used for the action badge
+            "class",
+            // SearchResultIconRow: calculator result copied on tap
+            "result",
+            EXTRA_ICON_KEY,
+        )
+        private val INT_CONTENT_EXTRAS = arrayOf(
+            // SearchResultEmptyState
+            "titleRes",
+            "subtitleRes",
+        )
+
         fun wrap(target: SearchTarget): SearchTargetCompat = SearchTargetCompat(target)
     }
+}
+
+/** Compares the shortcut fields a search result row shows, never the [ShortcutInfo] objects. */
+private fun ShortcutInfo?.hasSameContentAs(other: ShortcutInfo?): Boolean {
+    if (this === other) return true
+    if (this == null || other == null) return false
+    return id == other.id &&
+        `package` == other.`package` &&
+        userHandle == other.userHandle &&
+        shortLabel == other.shortLabel &&
+        longLabel == other.longLabel &&
+        isEnabled == other.isEnabled
 }

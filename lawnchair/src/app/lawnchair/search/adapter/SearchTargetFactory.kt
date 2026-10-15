@@ -46,7 +46,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.security.MessageDigest
 import java.util.Locale
-import java.util.UUID
 import okio.ByteString
 
 class SearchTargetFactory(
@@ -102,8 +101,8 @@ class SearchTargetFactory(
     ): SearchTargetCompat {
         val result = calculation.result
         val equation = calculation.equation
-        val uuid = UUID.randomUUID().toString()
-        val id = "calculator:$uuid"
+        // Deterministic so the row keeps its identity across result updates for the same query.
+        val id = "calculator:${equation.trim()}"
         val bitmap = createSmallSearchResultBitmap(context, R.drawable.calculator)
         val action = SearchActionCompat.Builder(id, result)
             .setIcon(Icon.createWithAdaptiveBitmap(bitmap))
@@ -283,6 +282,8 @@ class SearchTargetFactory(
             LayoutType.PEOPLE_TILE,
             SearchTargetCompat.RESULT_TYPE_CONTACT_TILE,
             CONTACT,
+            // The photo comes from this URI, not from the id.
+            bundleOf(SearchTargetCompat.EXTRA_ICON_KEY to info.uri),
         )
     }
 
@@ -316,6 +317,8 @@ class SearchTargetFactory(
             LayoutType.THUMBNAIL,
             SearchTargetCompat.RESULT_TYPE_FILE_TILE,
             FILES,
+            // The thumbnail follows the file content, which can change under the same path.
+            bundleOf(SearchTargetCompat.EXTRA_ICON_KEY to info.dateModified.toString()),
         )
     }
 

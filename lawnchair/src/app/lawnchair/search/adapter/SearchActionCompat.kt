@@ -19,6 +19,7 @@ import android.app.PendingIntent
 import android.app.search.SearchAction
 import android.content.Intent
 import android.graphics.drawable.Icon
+import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
 import android.os.UserHandle
@@ -95,6 +96,27 @@ data class SearchActionCompat(
     }
 
     override fun hashCode(): Int = Objects.hash(id, title)
+
+    /**
+     * Returns true if [other] looks and acts the same as this action in a search result row.
+     *
+     * [equals] only compares [id] and [title]. This also compares the subtitle, the icon source and
+     * where a tap goes, without relying on [Icon], [Intent] or [Bundle] equality (they compare by
+     * reference and are rebuilt for every result set).
+     */
+    fun isContentSameAs(other: SearchActionCompat?): Boolean {
+        if (this === other) return true
+        if (other == null) return false
+        return id == other.id &&
+            title == other.title &&
+            subtitle == other.subtitle &&
+            contentDescription == other.contentDescription &&
+            userHandle == other.userHandle &&
+            pendingIntent == other.pendingIntent &&
+            intent.isSameTargetAs(other.intent) &&
+            icon.hasSameSourceAs(other.icon) &&
+            CONTENT_EXTRAS.all { key -> extras.flag(key) == other.extras.flag(key) }
+    }
 
     /**
      * A builder for search action object.
@@ -177,5 +199,42 @@ data class SearchActionCompat(
 
     companion object {
         fun wrap(action: SearchAction): SearchActionCompat = SearchActionCompat(action)
+
+        /** Boolean [extras] read by `SearchResultIcon.bindFromAction`. */
+        private val CONTENT_EXTRAS = arrayOf(
+            "should_start_for_result",
+            "should_start",
+            "badge_with_package",
+            "badge_with_component_name",
+            "primary_icon_from_title",
+        )
+    }
+}
+
+private fun Bundle?.flag(key: String): Boolean = this?.getBoolean(key, false) ?: false
+
+private fun Intent?.isSameTargetAs(other: Intent?): Boolean = if (this == null || other == null) {
+    this === other
+} else {
+    filterEquals(other)
+}
+
+/**
+ * Compares where two icons come from rather than the [Icon] objects. Resource and URI icons are
+ * compared by resource or URI. Bitmap icons are rebuilt for every result set, so they count as the
+ * same: their pixels follow from the kind of target, its id and its title, and where they do not
+ * (contact photo, file thumbnail) the target carries [SearchTargetCompat.EXTRA_ICON_KEY].
+ */
+private fun Icon?.hasSameSourceAs(other: Icon?): Boolean {
+    if (this === other) return true
+    if (this == null || other == null) return false
+    // Icon.getType() and the per-type getters are API 28+; older releases rely on the id and EXTRA_ICON_KEY.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return true
+    if (type != other.type) return false
+    return when (type) {
+        Icon.TYPE_RESOURCE -> resId == other.resId && resPackage == other.resPackage
+        Icon.TYPE_URI, Icon.TYPE_URI_ADAPTIVE_BITMAP -> uri == other.uri
+        Icon.TYPE_BITMAP, Icon.TYPE_ADAPTIVE_BITMAP -> true
+        else -> false
     }
 }

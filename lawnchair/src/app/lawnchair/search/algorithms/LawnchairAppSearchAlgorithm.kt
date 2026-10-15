@@ -16,6 +16,7 @@ import com.patrykmichalik.opto.core.onEach
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class LawnchairAppSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm(context) {
@@ -73,6 +74,13 @@ class LawnchairAppSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm(c
             currentJob?.cancel()
             resultHandler.removeCallbacksAndMessages(null)
         }
+    }
+
+    override fun destroy() {
+        super.destroy()
+        // Stops the four preference collectors and any in-flight search.
+        coroutineScope.cancel()
+        resultHandler.removeCallbacksAndMessages(null)
     }
 
     private fun getResult(

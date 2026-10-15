@@ -94,7 +94,8 @@ class HeadlessWidgetsManager @Inject constructor(
             val view = host.createView(context, widgetId, info) as HeadlessAppWidgetHostView
             trySend(view)
             view.updateCallback = { trySend(it) }
-            awaitClose()
+            // Without this the orphaned view keeps invoking trySend for a subscriber that left.
+            awaitClose { view.updateCallback = null }
         }
             .onStart { if (!isBound) throw WidgetNotBoundException() }
             .shareIn(

@@ -17,7 +17,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 @LauncherAppSingleton
 class WallpaperService @Inject constructor(
@@ -28,12 +31,18 @@ class WallpaperService @Inject constructor(
 
     suspend fun saveWallpaper(wallpaperManager: WallpaperManager) {
         try {
-            val wallpaperDrawable = wallpaperManager.drawable
-            val currentBitmap = (wallpaperDrawable as BitmapDrawable).toBitmap()
+            // Decoding, PNG-encoding and hashing the wallpaper is heavy, so never do it on the
+            // caller's (possibly main) thread.
+            withContext(Dispatchers.IO) {
+                val wallpaperDrawable = wallpaperManager.drawable
+                val currentBitmap = (wallpaperDrawable as BitmapDrawable).toBitmap()
 
-            val byteArray = bitmapToByteArray(currentBitmap)
+                val byteArray = bitmapToByteArray(currentBitmap)
 
-            saveWallpaper(byteArray)
+                saveWallpaper(byteArray)
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("WallpaperChange", "Error detecting wallpaper change: ${e.message}")
         }

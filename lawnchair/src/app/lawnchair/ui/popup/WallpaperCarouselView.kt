@@ -16,12 +16,10 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleOwner
 import app.lawnchair.data.wallpaper.Wallpaper
 import app.lawnchair.data.wallpaper.model.WallpaperViewModel
 import app.lawnchair.launcher
 import app.lawnchair.util.decodeSampledBitmapFromFile
-import app.lawnchair.util.observeOnce
 import app.lawnchair.views.component.IconFrame
 import com.android.launcher3.R
 import com.android.launcher3.util.Themes
@@ -30,6 +28,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -48,20 +47,31 @@ class WallpaperCarouselView @JvmOverloads constructor(
         setBackgroundWithRadius(Themes.getColorAccent(context), 100F)
     }
     private val loadingView = ProgressBar(context).apply { isIndeterminate = true }
-    private val viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var viewScope = newViewScope()
 
     init {
         orientation = HORIZONTAL
         addView(loadingView)
-        observeWallpapers()
     }
 
+    private fun newViewScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private fun observeWallpapers() {
-        viewModel.wallpapers.observeOnce(context as LifecycleOwner) { wallpapers ->
-            visibility = if (wallpapers.isEmpty()) GONE else VISIBLE
-            loadingView.visibility = if (wallpapers.isEmpty()) GONE else VISIBLE
-            if (wallpapers.isNotEmpty()) displayWallpapers(wallpapers)
+        viewScope.launch {
+            viewModel.wallpapers.collect { wallpapers ->
+                visibility = if (wallpapers.isEmpty()) GONE else VISIBLE
+                loadingView.visibility = if (wallpapers.isEmpty()) GONE else VISIBLE
+                if (wallpapers.isNotEmpty()) displayWallpapers(wallpapers)
+            }
         }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (!viewScope.isActive) viewScope = newViewScope()
+        // The listener registration and the collector live exactly as long as the view is attached.
+        viewModel.start()
+        observeWallpapers()
     }
 
     private fun displayWallpapers(wallpapers: List<Wallpaper>) {
@@ -199,6 +209,7 @@ class WallpaperCarouselView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        viewModel.stop()
         viewScope.cancel()
     }
 

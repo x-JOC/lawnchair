@@ -1,43 +1,51 @@
 package app.lawnchair.data.wallpaper.model
 
 import android.app.Application
-import android.app.WallpaperManager
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import app.lawnchair.data.wallpaper.Wallpaper
 import app.lawnchair.wallpaper.WallpaperManagerCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class WallpaperViewModel(application: Application) : AndroidViewModel(application) {
+/**
+ * Holds the top wallpapers for [app.lawnchair.ui.popup.WallpaperCarouselView].
+ *
+ * This is constructed directly by the view (the Launcher is not a ViewModelStoreOwner), so it has
+ * no `onCleared`. The owner must call [start] when it is attached and [stop] when it is detached,
+ * otherwise the [WallpaperManagerCompat] listener and the coroutine scope would leak.
+ */
+class WallpaperViewModel(application: Application) {
     private val wallpaperManagerCompat = WallpaperManagerCompat.INSTANCE.get(application)
 
     val wallpapers: StateFlow<List<Wallpaper>>
         field = MutableStateFlow<List<Wallpaper>>(emptyList())
 
-    private val mutex = Mutex()
+    private var scope: CoroutineScope? = null
 
     private val listener = object : WallpaperManagerCompat.OnColorsChangedListener {
         override fun onColorsChanged() {
-            viewModelScope.launch {
-                mutex.withLock {
-                    saveWallpaper(wallpaperManagerCompat.wallpaperManager)
-                }
-            }
+            // The compat layer saves every wallpaper change itself; just re-read the history
+            // (queued behind that save) while the carousel is attached.
+            loadTopWallpapers()
         }
     }
 
-    init {
-        loadTopWallpapers()
+    fun start() {
+        if (scope != null) return
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         wallpaperManagerCompat.addOnChangeListener(listener)
+        loadTopWallpapers()
     }
 
-    private suspend fun saveWallpaper(wallpaperManager: WallpaperManager) {
-        wallpaperManagerCompat.service.saveWallpaper(wallpaperManager)
-        refreshWallpapers()
+    fun stop() {
+        wallpaperManagerCompat.removeOnChangeListener(listener)
+        scope?.cancel()
+        scope = null
     }
 
     private suspend fun refreshWallpapers() {
@@ -46,8 +54,8 @@ class WallpaperViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun loadTopWallpapers() {
-        viewModelScope.launch {
-            mutex.withLock {
+        scope?.launch {
+            wallpaperManagerCompat.saveMutex.withLock {
                 refreshWallpapers()
             }
         }

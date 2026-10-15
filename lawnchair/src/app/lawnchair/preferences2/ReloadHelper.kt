@@ -30,7 +30,11 @@ class ReloadHelper(private val context: Context) {
     private val idp: InvariantDeviceProfile
         get() = InvariantDeviceProfile.INSTANCE.get(context)
     private var tis: TouchInteractionService.TISBinder? = null
-    private val tisBinder = TISBindHelper(context) { tis = it }
+
+    // Binding TouchInteractionService is only needed by reloadTaskbar(). Binding it eagerly leaked
+    // one never-unbound connection for every ReloadHelper that never reloaded the taskbar (e.g.
+    // one per FolderViewModel, three per Launcher recreate), so bind on first use instead.
+    private val tisBinder by lazy { TISBindHelper(context) { tis = it } }
 
     fun reloadGrid() {
         idp.onPreferencesChanged(context)

@@ -17,6 +17,8 @@ import android.util.Log
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewTreeObserver
+import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.animation.Interpolator
 import android.widget.LinearLayout
@@ -24,11 +26,17 @@ import android.widget.TextView
 import androidx.annotation.StringRes
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.marginLeft
 import androidx.core.view.marginRight
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.FloatPropertyCompat
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.recyclerview.widget.RecyclerView
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.allapps.AllAppsSearchInput
 import app.lawnchair.font.FontManager
@@ -84,6 +92,11 @@ import kotlinx.coroutines.launch
  * The panel keeps one height for all tabs (enough rows for the fullest tab), so switching tabs
  * never changes it. When every tab is empty it only has room for a one-line message. A new number
  * of rows is only applied while the panel is hidden.
+ *
+ * Typed search results show in the same grown bar ([holdsSearchResults]): when the user types, the
+ * tabs fade out and the bar takes the size of the results, which the drawer's search list draws
+ * inside it, while the drawer stays as it is under the bar ([setResultsShown]). The bar grows or
+ * shrinks as results come and go, never past the keyboard, and long results scroll inside it.
  */
 class AppSuggestionsHeaderView @JvmOverloads constructor(
     context: Context,
@@ -103,6 +116,10 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private val shadowBlur = resources.getDimension(R.dimen.drawer_suggestions_shadow_blur)
     private val shadowOffset = resources.getDimension(R.dimen.drawer_suggestions_shadow_offset)
     private val contentSlide = resources.getDimension(R.dimen.drawer_suggestions_content_slide)
+    private val resultsPaddingBottom = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_results_padding_bottom)
+    private val resultsMarginBottom = resources.getDimensionPixelSize(R.dimen.drawer_suggestions_results_margin_bottom)
+    private val resultsHairlineFade = resources.getDimension(R.dimen.drawer_suggestions_results_hairline_fade)
+    private val searchListPadding = resources.getDimensionPixelSize(R.dimen.search_result_recycler_view_padding)
     private val loader by lazy { AppSuggestionsLoader(context) }
 
     private lateinit var tabBar: SuggestionTabBar
@@ -165,6 +182,50 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     /** Hides the grown bar once the search bar draws its own background again, see [animateOut]. */
     private val finishHide = Runnable { hideNow() }
 
+    // Search results in the grown bar, see setResultsShown.
+
+    /** Whether the drawer shows search results, inside the grown bar. */
+    private var resultsShown = false
+
+    /**
+     * Whether the user has typed a query whose results haven't come yet. The bar keeps the size it
+     * has meanwhile, so it doesn't shrink between the tabs and the results.
+     */
+    private var resultsPending = false
+
+    /** How far below the search row the bar reaches for the results, in pixels, on [resultsSpring]. */
+    private var resultsExtent = 0f
+
+    /** Where [resultsSpring] is going. */
+    private var resultsTarget = 0f
+
+    /** How strongly the grown bar is filled for the results, like [fillAlpha] for the tabs. */
+    private var resultsFill = 0f
+
+    private val resultsSpring = SpringAnimation(this, RESULTS_EXTENT).apply {
+        setSpring(SpringForce().setStiffness(RESULTS_STIFFNESS).setDampingRatio(RESULTS_DAMPING_RATIO))
+        setMinimumVisibleChange(DynamicAnimation.MIN_VISIBLE_CHANGE_PIXELS)
+        addEndListener { _, canceled, _, _ -> if (!canceled) onResultsSettled() }
+    }
+
+    /** Follows the results list while it shows, every frame, see [updateResultsTarget]. */
+    private val resultsPreDraw = ViewTreeObserver.OnPreDrawListener {
+        updateResultsTarget()
+        true
+    }
+    private var resultsPreDrawAdded = false
+
+    /** Hides the fill once the search bar draws its own background again, see [onResultsSettled]. */
+    private val finishResults = Runnable {
+        resultsFill = 0f
+        invalidateParent()
+    }
+    private val tmpLocation = IntArray(2)
+
+    /** Whether the tabs, or the results, draw the search bar's background, see [setBarTakenOver]. */
+    private var tabsTakeBar = false
+    private var resultsTakeBar = false
+
     // The grown bar in the parent's coordinates, see updateShape.
     private val shapeRect = RectF()
     private var shapeRadius = 0f
@@ -200,11 +261,6 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     @StringRes
     private var emptyTextRes = 0
 
-    init {
-        // Draws the hairline under the search row, see onDraw.
-        setWillNotDraw(false)
-    }
-
     override fun onFinishInflate() {
         super.onFinishInflate()
         tabBar = ViewCompat.requireViewById(this, R.id.suggestion_tab_bar)
@@ -231,25 +287,29 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         (parent as? View)?.invalidate()
     }
 
-    /** Whether the grown bar shows over the lists, so they must leave its area to it. */
+    /** Whether the panel shows over the lists, so they must leave its area to it. */
     fun isCoveringContent(): Boolean = featureOn && visibility == VISIBLE && searchInput() != null
+
+    /** Whether the grown bar holds, or is about to hold, search results, or is still shrinking from them. */
+    private fun resultsActive(): Boolean = resultsShown || resultsPending || resultsExtent > 0f || resultsFill > 0f
 
     /**
      * Works out where the grown bar is right now, in the parent's coordinates: from the search
-     * bar's top to as far as it has grown into this view, as wide as the search bar. Returns
-     * whether it shows. The parent calls this once a frame, before drawing its children.
+     * bar's top to as far as it has grown into this view or for the results, as wide as the search
+     * bar. Returns whether it shows. The parent calls this once a frame, before drawing its children.
      */
     fun updateShape(): Boolean {
-        if (!featureOn || visibility != VISIBLE) return false
+        if (!featureOn) return false
+        val tabsShown = visibility == VISIBLE
+        if (!tabsShown && !resultsActive()) return false
         val input = searchInput() ?: return false
         val bar = input.barView
         if (bar.width == 0 || bar.height == 0) return false
         val left = input.left + input.translationX + bar.left + bar.translationX
         val top = input.top + input.translationY + bar.top + bar.translationY
         barBottom = top + bar.height
-        val fullBottom = this.top + translationY + height
-        val bottom = barBottom + max(0f, fullBottom - barBottom) * reveal.coerceIn(0f, MAX_REVEAL)
-        shapeRect.set(left, top, left + bar.width, bottom)
+        val tabsExtent = if (tabsShown) max(0f, this.top + translationY + height - barBottom) * reveal.coerceIn(0f, MAX_REVEAL) else 0f
+        shapeRect.set(left, top, left + bar.width, barBottom + max(tabsExtent, resultsExtent))
         shapeRadius = min(input.barCornerRadius(), bar.height / 2f)
         shapePath.rewind()
         shapePath.addRoundRect(shapeRect, shapeRadius, shapeRadius, Path.Direction.CW)
@@ -264,15 +324,25 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     fun coversPoint(x: Float, y: Float): Boolean = updateShape() && shapeContains(x, y, grown = showing)
 
     /**
-     * Whether a touch that lands at ([x], [y]), in the parent's coordinates, closes the panel: it
-     * shows, or is showing, and the touch is outside the grown bar. See
+     * Whether the search results list, which fills the drawer, takes a touch that lands at ([x],
+     * [y]), in the parent's coordinates: only on the grown bar, where it shows.
+     */
+    fun resultsCoverPoint(x: Float, y: Float): Boolean = updateShape() && shapeContains(x, y, grown = true)
+
+    /**
+     * Whether a touch that lands at ([x], [y]), in the parent's coordinates, closes the panel or
+     * the results: they show, or are showing, and the touch is outside the grown bar. See
      * [ActivityAllAppsContainerView.dispatchTouchEvent].
      */
-    fun shouldCloseOnTouchDown(x: Float, y: Float): Boolean = showing && updateShape() && !shapeContains(x, y, grown = true)
+    fun shouldCloseOnTouchDown(x: Float, y: Float): Boolean = (showing || resultsShown || resultsPending) && updateShape() && !shapeContains(x, y, grown = true)
 
     /** Whether the bar, as it is now or once fully [grown], covers ([x], [y]). */
     private fun shapeContains(x: Float, y: Float, grown: Boolean): Boolean {
-        val bottom = if (grown) max(shapeRect.bottom, top + translationY + height) else shapeRect.bottom
+        var bottom = shapeRect.bottom
+        if (grown) {
+            if (showing) bottom = max(bottom, top + translationY + height)
+            if (resultsShown || resultsPending) bottom = max(bottom, barBottom + resultsTarget)
+        }
         if (x < shapeRect.left || x >= shapeRect.right || y < shapeRect.top || y >= bottom) return false
         val r = shapeRadius
         val dx = x - x.coerceIn(shapeRect.left + r, shapeRect.right - r)
@@ -280,34 +350,19 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         return dx * dx + dy * dy <= r * r
     }
 
+    /** How strongly the grown bar is drawn right now. */
+    private fun shapeAlpha(): Float = max(fillAlpha, resultsFill) * (searchInput()?.alpha ?: 1f)
+
     /**
-     * Draws the grown bar on [canvas], the parent's, behind this view and the search bar: its soft
-     * shadow over the lists below it, the header protection that shows behind the search row when
-     * the list is scrolled, continued down, and its fill. Call [updateShape] first.
+     * Draws the grown bar on [canvas], the parent's, behind its content and the search bar: the
+     * header protection that shows behind the search row when the list is scrolled, continued down,
+     * its fill and the hairline under the search row. Call [updateShape] first.
      */
-    fun drawShape(canvas: Canvas) {
+    fun drawShapeFill(canvas: Canvas) {
         val container = parent as? ActivityAllAppsContainerView<*> ?: return
-        val alpha = fillAlpha * (searchInput()?.alpha ?: 1f)
+        val alpha = shapeAlpha()
         if (alpha <= 0f) return
         val r = shapeRadius
-
-        // Fades in as the bar grows: the search bar alone has none.
-        val growth = ((shapeRect.bottom - barBottom) / max(1f, height.toFloat())).coerceIn(0f, 1f)
-        val shadowStrength = alpha * min(1f, growth * SHADOW_FADE_IN_SPEED)
-        if (shadowStrength > 0f && Color.alpha(shadowColor) != 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val saveCount = canvas.save()
-            // Only outside the bar, so a see-through fill doesn't show it.
-            canvas.clipOutPath(shapePath)
-            shadowPaint.setShadowLayer(
-                shadowBlur,
-                0f,
-                shadowOffset,
-                ColorUtils.setAlphaComponent(shadowColor, (Color.alpha(shadowColor) * shadowStrength).roundToInt()),
-            )
-            // A pixel inside the bar, so that the shape casting the shadow is clipped away whole.
-            canvas.drawRoundRect(shapeRect.left + 1, shapeRect.top + 1, shapeRect.right - 1, shapeRect.bottom - 1, r, r, shadowPaint)
-            canvas.restoreToCount(saveCount)
-        }
 
         // The lists don't draw under the bar, so the protection that shows through the search
         // row's fill would stop where the header protection does.
@@ -326,18 +381,47 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         fillPaint.color = fillColor
         fillPaint.alpha = (Color.alpha(fillColor) * alpha).roundToInt()
         canvas.drawRoundRect(shapeRect, r, r, fillPaint)
+
+        // The hairline under the search row, where the bar starts to grow. With the results, it
+        // fades in over the first few pixels the bar grows.
+        val tabsHairline = if (visibility == VISIBLE) hairlineAlpha else 0f
+        val resultsHairline = resultsFill * (resultsExtent / resultsHairlineFade).coerceIn(0f, 1f)
+        val hairline = (Color.alpha(hairlineColor) * max(tabsHairline, resultsHairline) * (searchInput()?.alpha ?: 1f)).roundToInt()
+        if (hairline > 0 && shapeRect.bottom > barBottom) {
+            val saveCount = canvas.save()
+            canvas.clipPath(shapePath)
+            hairlinePaint.color = hairlineColor
+            hairlinePaint.alpha = hairline
+            canvas.drawRect(shapeRect.left + hairlineInset, barBottom, shapeRect.right - hairlineInset, barBottom + hairlineHeight, hairlinePaint)
+            canvas.restoreToCount(saveCount)
+        }
     }
 
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        // The hairline under the search row, at the top of this view, which starts where the
-        // search bar ends.
-        val alpha = (Color.alpha(hairlineColor) * hairlineAlpha).roundToInt()
-        if (alpha > 0) {
-            hairlinePaint.color = hairlineColor
-            hairlinePaint.alpha = alpha
-            canvas.drawRect(barInsetLeft + hairlineInset, 0f, width - barInsetRight - hairlineInset, hairlineHeight.toFloat(), hairlinePaint)
-        }
+    /**
+     * Draws the grown bar's soft shadow on [canvas], the parent's, over the lists around it. The
+     * parent draws it over all of its children, as it only falls outside the bar. Call
+     * [updateShape] first.
+     */
+    fun drawShapeShadow(canvas: Canvas) {
+        val alpha = shapeAlpha()
+        if (alpha <= 0f || Color.alpha(shadowColor) == 0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        val r = shapeRadius
+        // Fades in as the bar grows: the search bar alone has none.
+        val growth = ((shapeRect.bottom - barBottom) / max(resultsHairlineFade, height.toFloat())).coerceIn(0f, 1f)
+        val shadowStrength = alpha * min(1f, growth * SHADOW_FADE_IN_SPEED)
+        if (shadowStrength <= 0f) return
+        val saveCount = canvas.save()
+        // Only outside the bar, so a see-through fill doesn't show it.
+        canvas.clipOutPath(shapePath)
+        shadowPaint.setShadowLayer(
+            shadowBlur,
+            0f,
+            shadowOffset,
+            ColorUtils.setAlphaComponent(shadowColor, (Color.alpha(shadowColor) * shadowStrength).roundToInt()),
+        )
+        // A pixel inside the bar, so that the shape casting the shadow is clipped away whole.
+        canvas.drawRoundRect(shapeRect.left + 1, shapeRect.top + 1, shapeRect.right - 1, shapeRect.bottom - 1, r, r, shadowPaint)
+        canvas.restoreToCount(saveCount)
     }
 
     /**
@@ -362,12 +446,18 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private fun setHairlineAlpha(value: Float) {
         if (hairlineAlpha == value) return
         hairlineAlpha = value
-        invalidate()
+        invalidateParent()
     }
 
-    /** Hands the search bar's background to the grown bar, or back. */
+    /** Hands the search bar's background to the grown bar for the tabs, or back. */
     private fun setBarTakenOver(takenOver: Boolean) {
-        launcher?.appsView?.searchUiManager?.let { (it as? AllAppsSearchInput)?.setBarBackgroundTakenOver(takenOver) }
+        tabsTakeBar = takenOver
+        applyBarTakenOver()
+    }
+
+    /** The search bar's background stays with the grown bar while the tabs or the results hold it. */
+    private fun applyBarTakenOver() {
+        launcher?.appsView?.searchUiManager?.let { (it as? AllAppsSearchInput)?.setBarBackgroundTakenOver(tabsTakeBar || resultsTakeBar) }
     }
 
     /** Takes the touches on the grown bar, so none reaches the list under it. */
@@ -479,6 +569,13 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         } else {
             hideNow()
         }
+        resetResultsNow()
+    }
+
+    override fun dispatchApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        // The keyboard coming or going changes how far the bar may grow for the results.
+        if (resultsShown) invalidateParent()
+        return super.dispatchApplyWindowInsets(insets)
     }
 
     override fun onAppsUpdated() {
@@ -533,12 +630,182 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         barFilledBeforeShow = !searchBoxFocused && this.queryEmpty
         searchBoxFocused = focused
         this.queryEmpty = queryEmpty
+        // Before the tabs make way for the typed query, so the bar holds its size for the results.
+        setResultsPending(!queryEmpty && !resultsShown && holdsSearchResults())
         if (sessionStarts) {
             showLatest(allowHeightChange = !showing)
             refresh()
         } else {
             updateShown()
         }
+    }
+
+    // Search results
+
+    /**
+     * Whether typed search results show inside the grown bar, rather than on a page of their own:
+     * wherever the tabs can show. [ActivityAllAppsContainerView] then keeps the drawer as it is
+     * under the results, draws its search list inside the bar only and lets touches outside the
+     * bar through to the drawer.
+     */
+    fun holdsSearchResults(): Boolean = featureOn && searchInput() != null
+
+    /**
+     * Called by the drawer as it starts to show search results, or to leave them. The bar grows on
+     * from its size right now (with the tabs, or for earlier results) to the results' size, and
+     * shrinks back when they go: into the tabs if the query was cleared, or into the search bar.
+     */
+    fun setResultsShown(shown: Boolean) {
+        if (!featureOn) return
+        resultsPending = false
+        if (shown != resultsShown) {
+            resultsShown = shown
+            if (shown) holdBarForResults()
+        }
+        updateResultsTarget()
+    }
+
+    /** The left padding of the search list while it shows in the grown bar, see [resultsPaddingRight]. */
+    fun resultsPaddingLeft(): Int {
+        val input = searchInput() ?: return 0
+        return (input.marginLeft + input.focusedBarPaddingLeft + horizontalPadding - searchListPadding).coerceAtLeast(0)
+    }
+
+    /**
+     * The right padding of the search list while it shows in the grown bar: its results line up
+     * with the tabs' icons inside the bar. The list adds its own padding on both sides.
+     */
+    fun resultsPaddingRight(): Int {
+        val input = searchInput() ?: return 0
+        return (input.marginRight + input.focusedBarPaddingRight + horizontalPadding - searchListPadding).coerceAtLeast(0)
+    }
+
+    private fun setResultsPending(pending: Boolean) {
+        if (pending == resultsPending) return
+        resultsPending = pending
+        if (pending) holdBarForResults()
+        updateResultsTarget()
+    }
+
+    /**
+     * Takes the grown bar over for the results at the size it has now, filled, so that it goes
+     * straight on from the tabs or from the search bar, and starts following the results list.
+     */
+    private fun holdBarForResults() {
+        removeCallbacks(finishResults)
+        val current = if (updateShape()) shapeRect.bottom - barBottom else 0f
+        if (current > resultsExtent) {
+            resultsSpring.cancel()
+            setResultsExtent(current)
+        }
+        resultsTarget = resultsExtent
+        resultsFill = 1f
+        resultsTakeBar = true
+        applyBarTakenOver()
+        if (!resultsPreDrawAdded) {
+            resultsPreDrawAdded = true
+            viewTreeObserver.addOnPreDrawListener(resultsPreDraw)
+        }
+        invalidateParent()
+    }
+
+    /**
+     * Points [resultsSpring] at the size the bar needs for the results right now: down to the
+     * bottom of the last result, but never past the keyboard or the navigation bar, where the list
+     * scrolls inside it instead. While results are on their way, it keeps the size it has.
+     */
+    private fun updateResultsTarget() {
+        val target = when {
+            resultsShown -> resultsContentExtent() ?: resultsTarget
+            resultsPending -> resultsTarget
+            else -> 0f
+        }
+        if (target == resultsTarget && (resultsSpring.isRunning || resultsExtent == target)) {
+            if (!resultsShown && !resultsPending && resultsExtent == 0f) onResultsSettled()
+            return
+        }
+        resultsTarget = target
+        if (mayAnimate()) {
+            resultsSpring.animateToFinalPosition(target)
+        } else {
+            resultsSpring.cancel()
+            setResultsExtent(target)
+            onResultsSettled()
+        }
+    }
+
+    /**
+     * How far below the search row the bar needs to reach for the results list as it is laid out,
+     * or null while the list has yet to lay out its new results.
+     */
+    private fun resultsContentExtent(): Float? {
+        val container = parent as? ActivityAllAppsContainerView<*> ?: return 0f
+        val list = container.searchRecyclerView ?: return 0f
+        val layoutManager = list.layoutManager ?: return 0f
+        if (list.visibility != VISIBLE || list.isLayoutRequested) return null
+        if (!updateShape()) return 0f
+        // Where the results end once they are in place, not where they are in an animation.
+        var contentBottom = -1
+        for (i in 0 until list.childCount) {
+            val child = list.getChildAt(i)
+            if ((child.layoutParams as? RecyclerView.LayoutParams)?.isItemRemoved == true) continue
+            contentBottom = max(contentBottom, layoutManager.getDecoratedBottom(child))
+        }
+        if (contentBottom < 0) return if ((list.adapter?.itemCount ?: 0) > 0) null else 0f
+        val listTop = list.top + list.translationY
+        val limit = min(listTop + list.height - list.paddingBottom, keyboardTop(container)) - resultsMarginBottom
+        return (min(listTop + contentBottom + resultsPaddingBottom, limit) - barBottom).coerceAtLeast(0f)
+    }
+
+    /** The top of the keyboard in [container]'s coordinates, or no limit while it's hidden. */
+    private fun keyboardTop(container: View): Float {
+        val ime = ViewCompat.getRootWindowInsets(container)?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
+        if (ime <= 0) return Float.MAX_VALUE
+        container.getLocationInWindow(tmpLocation)
+        return (container.rootView.height - ime - tmpLocation[1]).toFloat()
+    }
+
+    private fun setResultsExtent(value: Float) {
+        if (resultsExtent == value) return
+        resultsExtent = value
+        invalidateParent()
+    }
+
+    /**
+     * Once the bar has shrunk back from the results, gives the search bar its background back and
+     * stops following the results list. The fill stays a moment longer, until the search bar draws
+     * its background again (see [HAND_OVER_DELAY_MS]); the tabs draw their own if they show.
+     */
+    private fun onResultsSettled() {
+        if (resultsShown || resultsPending || resultsExtent > 0f || !resultsTakeBar) return
+        removeResultsPreDraw()
+        resultsTakeBar = false
+        applyBarTakenOver()
+        removeCallbacks(finishResults)
+        if (mayAnimate()) postDelayed(finishResults, HAND_OVER_DELAY_MS) else finishResults.run()
+    }
+
+    /** Drops the results from the grown bar right away, for example when the drawer closes. */
+    private fun resetResultsNow() {
+        resultsShown = false
+        resultsPending = false
+        resultsSpring.cancel()
+        resultsTarget = 0f
+        setResultsExtent(0f)
+        removeCallbacks(finishResults)
+        resultsFill = 0f
+        removeResultsPreDraw()
+        if (resultsTakeBar) {
+            resultsTakeBar = false
+            applyBarTakenOver()
+        }
+        invalidateParent()
+    }
+
+    private fun removeResultsPreDraw() {
+        if (!resultsPreDrawAdded) return
+        resultsPreDrawAdded = false
+        viewTreeObserver.removeOnPreDrawListener(resultsPreDraw)
     }
 
     // Data
@@ -883,6 +1150,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
                 // In case the search box kept its focus. The drawer is gone, so no animation.
                 searchBoxFocused = false
                 updateShown(animate = false)
+                resetResultsNow()
                 showLatest(allowHeightChange = true)
             }
         }
@@ -932,6 +1200,16 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
          * draws it again from its next frame or so; a little overlap rather than a frame without.
          */
         private const val HAND_OVER_DELAY_MS = 50L
+
+        /** The spring the bar grows and shrinks on for the results: like the tabs', without the bounce. */
+        private const val RESULTS_STIFFNESS = 600f
+        private const val RESULTS_DAMPING_RATIO = 0.9f
+
+        private val RESULTS_EXTENT = object : FloatPropertyCompat<AppSuggestionsHeaderView>("resultsExtent") {
+            override fun setValue(view: AppSuggestionsHeaderView, value: Float) = view.setResultsExtent(value)
+
+            override fun getValue(view: AppSuggestionsHeaderView): Float = view.resultsExtent
+        }
 
         private val REVEAL = object : FloatProperty<AppSuggestionsHeaderView>("reveal") {
             override fun setValue(view: AppSuggestionsHeaderView, value: Float) = view.setReveal(value)

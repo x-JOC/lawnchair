@@ -10,6 +10,7 @@ import androidx.viewpager.widget.ViewPager
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.launcher
 import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.preferences2.firstCached
 import app.lawnchair.preferences2.subscribeBlocking
 import app.lawnchair.ui.preferences.PreferenceActivity
 import app.lawnchair.ui.preferences.navigation.Smartspace
@@ -25,17 +26,15 @@ import com.kieronquinn.app.smartspacer.sdk.model.SmartspaceTarget
 import com.kieronquinn.app.smartspacer.sdk.model.UiSurface
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 
 class SmartspacerView(context: Context, attrs: AttributeSet?) : BcSmartspaceView(context, attrs) {
     private lateinit var viewPager: ViewPager
     private val prefs2 = PreferenceManager2.getInstance(context)
-    private val coroutineScope = CoroutineScope(Dispatchers.Default)
-    private var targetCount = 5
+    private var coroutineScope: CoroutineScope? = null
+    private var targetCount = prefs2.smartspacerMaxCount.firstCached(prefs2)
 
     init {
-        prefs2.smartspacerMaxCount.subscribeBlocking(prefs2 = prefs2, scope = coroutineScope) {
-            targetCount = it
-        }
 
         popupFactory = object : PopupFactory {
             override fun createPopup(
@@ -68,6 +67,23 @@ class SmartspacerView(context: Context, attrs: AttributeSet?) : BcSmartspaceView
                 }
             }
         }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // The collector captures this view, so it only lives while the view is attached.
+        coroutineScope?.cancel()
+        val scope = CoroutineScope(Dispatchers.Default)
+        coroutineScope = scope
+        prefs2.smartspacerMaxCount.subscribeBlocking(prefs2 = prefs2, scope = scope) {
+            targetCount = it
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        coroutineScope?.cancel()
+        coroutineScope = null
     }
 
     override fun onFinishInflate() {

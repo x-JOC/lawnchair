@@ -24,7 +24,6 @@ import com.android.launcher3.dagger.LauncherAppSingleton
 import com.android.launcher3.util.DaggerSingletonObject
 import com.android.launcher3.util.SafeCloseable
 import com.android.systemui.monet.Style
-import com.patrykmichalik.opto.core.onEach
 import dev.kdrag0n.colorkt.Color
 import dev.kdrag0n.colorkt.conversion.ConversionGraph.convert
 import dev.kdrag0n.colorkt.rgb.Srgb
@@ -32,6 +31,10 @@ import dev.kdrag0n.monet.theme.ColorScheme
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 @LauncherAppSingleton
 class ThemeProvider @Inject constructor(
@@ -59,14 +62,20 @@ class ThemeProvider @Inject constructor(
                 }
             }
         })
-        preferenceManager2.accentColor.onEach(launchIn = coroutineScope) {
-            accentColor = it
-            notifyColorSchemeChanged()
-        }
-        preferenceManager2.colorStyle.onEach(launchIn = coroutineScope) {
-            colorStyle = it
-            notifyColorSchemeChanged()
-        }
+        // Preference flows re-emit on writes to any key, and each notification makes every
+        // attached widget re-apply its RemoteViews: notify once, and only on a real change.
+        // The fields are seeded with firstCached(), so the initial emission is normally skipped.
+        combine(
+            preferenceManager2.accentColor.get(),
+            preferenceManager2.colorStyle.get(),
+        ) { accent, style -> accent to style }
+            .filter { (accent, style) -> accent != accentColor || style != colorStyle }
+            .onEach { (accent, style) ->
+                accentColor = accent
+                colorStyle = style
+                notifyColorSchemeChanged()
+            }
+            .launchIn(coroutineScope)
     }
 
     private fun registerOverlayChangedListener() {

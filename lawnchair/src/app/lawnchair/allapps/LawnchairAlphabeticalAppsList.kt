@@ -11,6 +11,7 @@ import app.lawnchair.data.folder.model.FolderViewModel
 import app.lawnchair.launcher
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.preferences2.firstCached
 import app.lawnchair.util.categorizeAppsWithSystemAndGoogle
 import app.lawnchair.util.observeOnce
 import com.android.launcher3.InvariantDeviceProfile.OnIDPChangeListener
@@ -24,8 +25,10 @@ import com.android.launcher3.model.data.FolderInfo
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.util.ComponentKey
 import com.android.launcher3.views.ActivityContext
-import com.patrykmichalik.opto.core.onEach
 import java.util.function.Predicate
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 @Suppress("SYNTHETIC_PROPERTY_WITHOUT_JAVA_ORIGIN")
 class LawnchairAlphabeticalAppsList<T>(
@@ -38,9 +41,12 @@ class LawnchairAlphabeticalAppsList<T>(
     DefaultLifecycleObserver
     where T : Context, T : ActivityContext {
 
-    private var hiddenApps: Set<String> = setOf()
     private val prefs2 = PreferenceManager2.getInstance(context)
     private val prefs = PreferenceManager.getInstance(context)
+
+    // Seeded from the cache so the first list build already excludes hidden apps and the
+    // collector's initial emission (normally the same set) does not rebuild the lists again.
+    private var hiddenApps: Set<String> = prefs2.hiddenApps.firstCached(prefs2)
 
     private val viewModel = FolderViewModel(
         (context as? ComponentActivity)?.application ?: context.launcher.application,
@@ -52,10 +58,15 @@ class LawnchairAlphabeticalAppsList<T>(
         context.launcher.deviceProfile.inv.addOnChangeListener(this)
         (context as? LifecycleOwner)?.lifecycle?.addObserver(this)
         try {
-            prefs2.hiddenApps.onEach(launchIn = context.launcher.lifecycleScope) {
-                hiddenApps = it
-                onAppsUpdated()
-            }
+            // The flow re-emits the same set on writes to any other preference; only a real
+            // change may rebuild the lists.
+            prefs2.hiddenApps.get()
+                .filter { it != hiddenApps }
+                .onEach {
+                    hiddenApps = it
+                    onAppsUpdated()
+                }
+                .launchIn(context.launcher.lifecycleScope)
         } catch (t: Throwable) {
             Log.w(TAG, "Failed to initialize hidden apps", t)
         }

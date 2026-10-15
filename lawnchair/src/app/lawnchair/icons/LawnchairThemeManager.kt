@@ -20,8 +20,9 @@ import javax.inject.Inject
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.plus
 
@@ -59,12 +60,16 @@ constructor(
 
     init {
         val scope = MainScope() + CoroutineName("LawnchairThemeManager")
-        merge(
+        // Preference flows re-emit on writes to any key: check once per real shape change,
+        // not once per flow per write.
+        combine(
             prefs2.iconShape.get(),
             prefs2.customIconShape.get(),
             prefs2.folderShape.get(),
             prefs2.customFolderShape.get(),
-        ).onEach { verifyIconState() }
+        ) { shapes -> shapes.toList() }
+            .distinctUntilChanged()
+            .onEach { verifyIconState() }
             .launchIn(scope)
 
         statePrefs1.forEach { it.addListener(prefListener) }

@@ -458,11 +458,9 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     override fun initializeSearch(appsView: ActivityAllAppsContainerView<*>) {
         apps = appsView.searchResultList as LawnchairAlphabeticalAppsList<*>
         this.appsView = appsView
-        // Release the previous algorithm (scopes, pref listeners, search session) before replacing
-        // it, and make sure the current one is released when the Launcher is destroyed.
-        this.searchAlgorithm?.destroy()
         val algorithm = LawnchairSearchAlgorithm.create(context)
         this.searchAlgorithm = algorithm
+        // Release the algorithm (scopes, pref listeners, search session) with the Launcher.
         launcher.lifecycle.addObserver(destroyObserver)
         searchBarController.initialize(
             algorithm,

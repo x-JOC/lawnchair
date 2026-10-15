@@ -945,7 +945,7 @@ class PreferenceManager2 @Inject constructor(
         } ?: GestureHandlerConfig.NoOp
     }
 
-    private fun initializeIconShape(shape: IconShape) {
+    fun initializeIconShape(shape: IconShape) {
         CustomAdaptiveIconDrawable.sInitialized = true
         CustomAdaptiveIconDrawable.sMaskId = shape.getHashString()
         CustomAdaptiveIconDrawable.sMask = shape.getMaskPath()

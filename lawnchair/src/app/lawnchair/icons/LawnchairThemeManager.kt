@@ -73,7 +73,12 @@ constructor(
             // Build the state from the emitted shapes, not from firstCached(): that cache is
             // filled by a separate collector and may still hold the previous value here, and
             // distinctUntilChanged() means no later repeat would correct it.
-            .onEach { updateIconState(parseIconStateV2(iconState, it.appShape, it.folderShape)) }
+            .onEach {
+                // CustomAdaptiveIconDrawable copies sMask at construction, so the mask must be
+                // updated before the reload this triggers (PreferenceManager2 does it too).
+                prefs2.initializeIconShape(it.appShape)
+                updateIconState(parseIconStateV2(iconState, it.appShape, it.folderShape))
+            }
             .launchIn(scope)
 
         statePrefs1.forEach { it.addListener(prefListener) }

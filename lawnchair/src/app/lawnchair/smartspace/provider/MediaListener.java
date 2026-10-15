@@ -68,6 +68,8 @@ public class MediaListener extends MediaController.Callback {
         mHandler.removeCallbacks(mOnChange);
         updateControllers(Collections.emptyList());
         mTracking = null;
+        // onResume() must not rebuild tracking from a list that went stale while paused.
+        mNotifications = Collections.emptyList();
     }
 
     public MediaNotificationController getTracking() {

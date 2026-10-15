@@ -44,7 +44,11 @@ class ThemeProvider @Inject constructor(
     private val wallpaperManager = WallpaperManagerCompat.INSTANCE.get(context)
     private val coroutineScope = CoroutineScope(Dispatchers.Default)
 
+    // Written by the collector on Dispatchers.Default, read on the main thread.
+    @Volatile
     private var accentColor: ColorOption = preferenceManager2.accentColor.firstCached()
+
+    @Volatile
     private var colorStyle: ColorStyle = preferenceManager2.colorStyle.firstCached()
 
     private val colorSchemeMap = HashMap<Pair<Int, Style>, ColorScheme>()

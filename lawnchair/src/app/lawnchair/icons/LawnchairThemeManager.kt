@@ -67,9 +67,13 @@ constructor(
             prefs2.customIconShape.get(),
             prefs2.folderShape.get(),
             prefs2.customFolderShape.get(),
-        ) { shapes -> shapes.toList() }
+            ::ShapePrefs,
+        )
             .distinctUntilChanged()
-            .onEach { verifyIconState() }
+            // Build the state from the emitted shapes, not from firstCached(): that cache is
+            // filled by a separate collector and may still hold the previous value here, and
+            // distinctUntilChanged() means no later repeat would correct it.
+            .onEach { updateIconState(parseIconStateV2(iconState, it.appShape, it.folderShape)) }
             .launchIn(scope)
 
         statePrefs1.forEach { it.addListener(prefListener) }
@@ -81,7 +85,10 @@ constructor(
     }
 
     override fun verifyIconState() {
-        val newState = parseIconStateV2(iconState)
+        updateIconState(parseIconStateV2(iconState))
+    }
+
+    private fun updateIconState(newState: IconState) {
         if (newState == iconState) return
         iconState = newState
 
@@ -90,21 +97,25 @@ constructor(
 
     private fun prefs1State(): String = statePrefs1.joinToString(",") { it.get().toString() }
 
-    private fun parseIconStateV2(oldState: IconState?): IconState {
-        val currentAppShape: IconShape = try {
-            prefs2.iconShape.firstCached()
-        } catch (e: Exception) {
-            Log.d(TAG, "Error getting icon shape", e)
-            IconShape.Circle
-        }
+    private fun cachedAppShape(): IconShape = try {
+        prefs2.iconShape.firstCached()
+    } catch (e: Exception) {
+        Log.d(TAG, "Error getting icon shape", e)
+        IconShape.Circle
+    }
 
-        val currentFolderShape: IconShape = try {
-            prefs2.folderShape.firstCached()
-        } catch (e: Exception) {
-            Log.d(TAG, "Error getting folder shape", e)
-            IconShape.Circle
-        }
+    private fun cachedFolderShape(): IconShape = try {
+        prefs2.folderShape.firstCached()
+    } catch (e: Exception) {
+        Log.d(TAG, "Error getting folder shape", e)
+        IconShape.Circle
+    }
 
+    private fun parseIconStateV2(
+        oldState: IconState?,
+        currentAppShape: IconShape = cachedAppShape(),
+        currentFolderShape: IconShape = cachedFolderShape(),
+    ): IconState {
         val currentPrefs1State = prefs1State()
         val appShapeKey = currentAppShape.getHashString() + currentPrefs1State
         val folderShapeKey = currentFolderShape.getHashString() + currentPrefs1State
@@ -142,6 +153,14 @@ constructor(
         )
     }
 }
+
+/** The shape preferences the collector watches; a data class so distinctUntilChanged() works. */
+private data class ShapePrefs(
+    val appShape: IconShape,
+    val customAppShape: IconShape?,
+    val folderShape: IconShape,
+    val customFolderShape: IconShape?,
+)
 
 // Reuse controllers to allow the equality check in verifyIconState.
 private val MONO_THEME_CONTROLLER = MonoIconThemeController()

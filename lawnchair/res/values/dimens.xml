@@ -181,5 +181,11 @@
     <!-- How far the tabs and icons slide down into place as the bar grows. -->
     <dimen name="drawer_suggestions_content_slide">8dp</dimen>
     <dimen name="drawer_suggestions_icon_entrance_drop">6dp</dimen>
+    <!-- Typed search results inside the grown search bar: space under the last result, the least
+         space left between the bar and the keyboard or the navigation bar, and how far the bar
+         grows before the hairline under the search row is fully drawn. -->
+    <dimen name="drawer_suggestions_results_padding_bottom">6dp</dimen>
+    <dimen name="drawer_suggestions_results_margin_bottom">12dp</dimen>
+    <dimen name="drawer_suggestions_results_hairline_fade">12dp</dimen>
 
 </resources>

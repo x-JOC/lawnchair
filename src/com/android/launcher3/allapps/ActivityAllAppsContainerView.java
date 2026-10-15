@@ -173,6 +173,11 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             new RecyclerView.OnScrollListener() {
                 @Override
                 public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
+                    // LC-Note: results shown in the grown search bar scroll inside it, over the
+                    // drawer, so they leave the drawer's header as it is.
+                    if (recyclerView == mSearchRecyclerView && isSearchResultsInBox()) {
+                        return;
+                    }
                     updateHeaderScroll(recyclerView.computeVerticalScrollOffset());
                 }
             };
@@ -186,8 +191,10 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     // LC-Note: the drawer's suggestion tabs, shown while the search box is in use inside the
     // search bar, which grows down over the lists to hold them. They never move the lists.
     protected AppSuggestionsHeaderView mSuggestionsPanel;
-    // LC-Note: whether the grown search bar shows in the frame being drawn.
+    // LC-Note: whether the grown search bar shows in the frame being drawn, and whether its fill
+    // has been drawn yet in it (see drawChild).
     private boolean mSuggestionsShapeShown;
+    private boolean mSuggestionsShapeDrawn;
     // LC-Note: a touch that closed the suggestion tabs as it landed outside the grown search bar
     // (see dispatchTouchEvent), and its down event while it is kept from the children.
     private boolean mSuggestionsClosingTouch;
@@ -447,6 +454,15 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         return mSuggestionsPanel;
     }
 
+    /**
+     * LC-Note: whether search results show inside the search bar grown to hold them, as the
+     * suggestion tabs do, rather than on a page of their own: the drawer then stays as it is under
+     * them, and the search list only draws, and takes touches, inside the grown bar.
+     */
+    public boolean isSearchResultsInBox() {
+        return mSuggestionsPanel != null && mSuggestionsPanel.holdsSearchResults();
+    }
+
     /** Clears displayed search results. */
     public void onClearSearchResult() {
         getMainAdapterProvider().clearHighlightedItem();
@@ -500,6 +516,8 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         if (!mSearchTransitionController.isRunning() && goingToSearch == isSearching()) {
             return;
         }
+        // LC-Note: the search bar grows to the results' size, or back, with them.
+        mSuggestionsPanel.setResultsShown(goingToSearch && isSearchResultsInBox());
         mSearchExitInProgress = !goingToSearch;
         mFastScroller.setVisibility(goingToSearch ? INVISIBLE : VISIBLE);
         if (goingToSearch) {
@@ -705,7 +723,18 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         }
         // Header keeps track of active recycler view to properly render header protection.
         mHeader.setActiveRV(currentActivePage);
-        reset(true /* animate */, !isSearching() && !keepSearchFocus /* exitSearch */);
+        boolean exitSearch = !isSearching() && !keepSearchFocus;
+        if (mSearchExitInProgress && isSearchResultsInBox()) {
+            // LC-Note: the drawer stayed in place under results shown in the grown search bar,
+            // so leaving them doesn't scroll it back to the top.
+            updateHeaderScroll(getActiveRecyclerView() == null
+                    ? 0 : getActiveRecyclerView().computeVerticalScrollOffset());
+            if (exitSearch) {
+                MAIN_EXECUTOR.getHandler().post(mSearchUiManager::resetSearch);
+            }
+        } else {
+            reset(true /* animate */, exitSearch);
+        }
 
         mWorkManager.onActivePageChanged(currentActivePage);
     }
@@ -970,9 +999,9 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
             mHeaderColor = headerColor;
             mTabsProtectionAlpha = tabsAlpha;
             invalidateHeader();
-            // LC-Note: the search bar, grown to hold the suggestion tabs, continues the header
-            // protection below the search bar.
-            if (mSuggestionsPanel.isCoveringContent()) {
+            // LC-Note: the search bar, grown to hold the suggestion tabs or the results,
+            // continues the header protection below the search bar.
+            if (mSuggestionsShapeShown) {
                 invalidate();
             }
         }
@@ -1543,15 +1572,20 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
     @Override
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
-        // LC-Note: while the suggestion tabs show, the search bar grows down to hold them, over
-        // the lists. The lists and the header don't draw under the grown bar, so it sits on the
-        // drawer background itself, whatever its color, opacity or blur, like the search bar does.
-        // The grown bar, with its shadow over the lists, is drawn right before the tabs, which
-        // are kept inside it, and so behind the search box.
+        // LC-Note: while the suggestion tabs or typed results show, the search bar grows down to
+        // hold them, over the lists. The lists and the header don't draw under the grown bar, so
+        // it sits on the drawer background itself, whatever its color, opacity or blur, like the
+        // search bar does. The grown bar is filled right before the first of the tabs and the
+        // search list, which are kept inside it, or before the search box, which draws over it;
+        // its shadow goes over everything else (dispatchDraw).
         if (mSuggestionsShapeShown) {
-            if (child == mSuggestionsPanel) {
+            boolean insideShape = child == mSuggestionsPanel || child == mSearchRecyclerView;
+            if (!mSuggestionsShapeDrawn && (insideShape || child == mSearchContainer)) {
+                mSuggestionsShapeDrawn = true;
+                mSuggestionsPanel.drawShapeFill(canvas);
+            }
+            if (insideShape) {
                 int saveCount = canvas.save();
-                mSuggestionsPanel.drawShape(canvas);
                 canvas.clipPath(mSuggestionsPanel.getShapePath());
                 boolean more = super.drawChild(canvas, child, drawingTime);
                 canvas.restoreToCount(saveCount);
@@ -1569,9 +1603,14 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
-        // LC-Note: where the search bar, grown to hold the suggestion tabs, is in this frame.
+        // LC-Note: where the search bar, grown to hold the suggestion tabs or the results, is in
+        // this frame, and its shadow over the lists around it.
         mSuggestionsShapeShown = mSuggestionsPanel != null && mSuggestionsPanel.updateShape();
+        mSuggestionsShapeDrawn = false;
         super.dispatchDraw(canvas);
+        if (mSuggestionsShapeShown) {
+            mSuggestionsPanel.drawShapeShadow(canvas);
+        }
 
         if (mNavBarScrimHeight > 0) {
             float left = (getWidth() - getWidth() / getScaleX()) / 2;
@@ -1582,6 +1621,16 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
     }
 
     protected void updateSearchResultsVisibility() {
+        // LC-Note: results shown in the grown search bar leave the drawer on screen under them,
+        // its header following its own list.
+        boolean resultsInBox = isSearchResultsInBox();
+        if (isSearching() && resultsInBox) {
+            getSearchRecyclerView().setVisibility(VISIBLE);
+            if (mHeader.isSetUp()) {
+                mHeader.setActiveRV(mViewPager == null ? AdapterHolder.MAIN : mViewPager.getNextPage());
+            }
+            return;
+        }
         if (isSearching()) {
             getSearchRecyclerView().setVisibility(VISIBLE);
             getAppsRecyclerViewContainer().setVisibility(GONE);
@@ -2057,6 +2106,14 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
                 }
                 if (isSearchBarFloating()) {
                     bottomOffset += mSearchContainer.getHeight();
+                }
+                if (isSearch() && isSearchResultsInBox()) {
+                    // LC-Note: results shown in the grown search bar sit inside it, right under
+                    // the search row, whatever the header holds.
+                    mRecyclerView.setPadding(mSuggestionsPanel.resultsPaddingLeft(), 0,
+                            mSuggestionsPanel.resultsPaddingRight(),
+                            mPadding.bottom + bottomOffset);
+                    return;
                 }
                 mRecyclerView.setPadding(mPadding.left, mPadding.top, mPadding.right,
                         mPadding.bottom + bottomOffset);

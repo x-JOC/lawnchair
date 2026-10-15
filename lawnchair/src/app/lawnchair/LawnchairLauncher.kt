@@ -542,11 +542,12 @@ class LawnchairLauncher : QuickstepLauncher() {
     }
 
     /**
-     * Reloads app icons if there is an active icon pack & [PreferenceManager2.alwaysReloadIcons] is enabled.
+     * Reloads app icons if an icon pack or themed icon pack is selected & [PreferenceManager2.alwaysReloadIcons] is enabled.
      */
     private fun reloadIconsIfNeeded() {
         if (
-            preferenceManager2.alwaysReloadIcons.firstCached()
+            preferenceManager2.alwaysReloadIcons.firstCached() &&
+            (prefs.iconPackPackage.get().isNotEmpty() || prefs.themedIconPackPackage.get().isNotEmpty())
         ) {
             LauncherAppState.getInstance(this).model.reloadIfActive()
         }

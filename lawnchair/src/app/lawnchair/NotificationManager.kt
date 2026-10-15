@@ -13,6 +13,7 @@ import com.android.launcher3.util.SafeCloseable
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,7 +61,7 @@ class NotificationManager @Inject constructor(
     }
 
     override fun close() {
-        TODO("Not yet implemented")
+        scope.cancel()
     }
 
     companion object {

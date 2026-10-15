@@ -38,15 +38,22 @@ class LawnchairSearchAdapterProvider(
         append(SEARCH_RESULT_EMPTY_STATE, R.layout.search_result_empty_state)
         append(SEARCH_RESULT_SEARCH_SETTINGS, R.layout.search_result_search_settings)
     }
+    private var quickLaunchTitle: String? = null
     private var quickLaunchItem: SearchResultView? = null
         set(value) {
+            val title = value?.titleText?.toString()
+            // Rebinding the same quick-launch row with the same title leaves nothing to redraw.
+            val changed = field !== value || quickLaunchTitle != title
             field = value
+            quickLaunchTitle = title
             appsView.searchUiManager.setFocusedResultTitle(
-                field?.titleText,
-                field?.titleText,
-                field != null,
+                value?.titleText,
+                value?.titleText,
+                value != null,
             )
-            appsView.mSearchRecyclerView.invalidate()
+            if (changed) {
+                appsView.mSearchRecyclerView.invalidate()
+            }
         }
 
     override fun isViewSupported(viewType: Int): Boolean = layoutIdMap.contains(viewType)

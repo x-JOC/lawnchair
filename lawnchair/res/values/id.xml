@@ -23,6 +23,8 @@
     <item type="id" name="font_body" />
     <item type="id" name="font_body_medium" />
 
+    <item type="id" name="search_ripple_background" />
+
     <item type="id" name="qsbIconTintPrimary" />
     <item type="id" name="qsbIconTintSecondary" />
     <item type="id" name="qsbIconTintTertiary" />

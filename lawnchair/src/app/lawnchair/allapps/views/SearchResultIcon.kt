@@ -182,7 +182,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
         notifyApplied(info)
         if (bindIcon) {
             val targetId = boundId
-            Executors.MODEL_EXECUTOR.handler.postAtFrontOfQueue {
+            Executors.MODEL_EXECUTOR.handler.post {
                 populateSearchActionItemInfo(target, info)
                 runOnMainThread {
                     if (boundId == targetId) {

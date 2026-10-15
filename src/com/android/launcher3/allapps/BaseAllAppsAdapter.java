@@ -57,6 +57,8 @@ public abstract class BaseAllAppsAdapter<T extends Context & ActivityContext> ex
         RecyclerView.Adapter<BaseAllAppsAdapter.ViewHolder> {
 
     public static final String TAG = "BaseAllAppsAdapter";
+    // Lawnchair: keeps the per-bind private space log (string concatenation) off the hot path.
+    private static final boolean DEBUG = false;
 
     // A normal icon
     public static final int VIEW_TYPE_ICON = 1 << 1;
@@ -307,13 +309,15 @@ public abstract class BaseAllAppsAdapter<T extends Context & ActivityContext> ex
                                     privateProfileManager.getReadyToAnimate())
                                 && privateProfileManager.getCurrentState() == STATE_ENABLED
                                 ? 0 : 1);
-                        Log.d(TAG, "onBindViewHolder: "
-                                + "isPrivateSpaceItem: " + isPrivateSpaceItem
-                        + " isStateTransitioning: " + privateProfileManager.isStateTransitioning()
-                        + " isScrolling: " + privateProfileManager.isScrolling()
-                        + " readyToAnimate: " + privateProfileManager.getReadyToAnimate()
-                        + " currentState: " + privateProfileManager.getCurrentState()
-                        + " currentAlpha: " + icon.getAlpha());
+                        if (DEBUG) {
+                            Log.d(TAG, "onBindViewHolder: "
+                                    + "isPrivateSpaceItem: " + isPrivateSpaceItem
+                            + " isStateTransitioning: " + privateProfileManager.isStateTransitioning()
+                            + " isScrolling: " + privateProfileManager.isScrolling()
+                            + " readyToAnimate: " + privateProfileManager.getReadyToAnimate()
+                            + " currentState: " + privateProfileManager.getCurrentState()
+                            + " currentAlpha: " + icon.getAlpha());
+                        }
                     }
                     // Views can still be bounded before the app list is updated hence showing icons
                     // after collapsing.

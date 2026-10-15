@@ -396,9 +396,10 @@ class SearchTargetFactory(
         private const val HASH_ALGORITHM = "SHA-256"
 
         // TODO find a way to properly provide tag/provide ids to search target
-        private val messageDigest by lazy { MessageDigest.getInstance(HASH_ALGORITHM) }
+        // MessageDigest is stateful and not thread-safe, and search jobs can overlap.
+        private val messageDigest = ThreadLocal.withInitial { MessageDigest.getInstance(HASH_ALGORITHM) }
 
-        private fun generateHashKey(input: String): String = ByteString.of(*messageDigest.digest(input.toByteArray())).hex()
+        private fun generateHashKey(input: String): String = ByteString.of(*messageDigest.get()!!.digest(input.toByteArray())).hex()
 
         fun createSearchTarget(
             id: String,

@@ -40,6 +40,12 @@ data class SearchAdapterItem(
         get() = searchTarget.extras.getBoolean(SearchResultView.EXTRA_QUICK_LAUNCH, false)
 
     fun setRippleEffect(child: View) {
+        // The ripple only depends on the background, so keep it while the same background is bound
+        // again to this view (recycled view holders rebind with the same background instance often).
+        val boundKey = background ?: NO_BACKGROUND
+        if (child.getTag(R.id.search_ripple_background) === boundKey && child.background is RippleDrawable) {
+            return
+        }
         val shape = RoundRectShape(background?.cornerRadii, null, null)
         val maskDrawable = ShapeDrawable(shape).apply {
             paint.color = Color.WHITE
@@ -48,9 +54,12 @@ data class SearchAdapterItem(
         val inset = child.resources.getDimensionPixelSize(R.dimen.search_decoration_padding)
         val insetMask = InsetDrawable(maskDrawable, 0, inset, 0, inset)
         child.background = RippleDrawable(ColorStateList.valueOf(rippleColor), null, insetMask)
+        child.setTag(R.id.search_ripple_background, boundKey)
     }
 
     companion object {
+
+        private val NO_BACKGROUND = Any()
 
         fun createAdapterItem(
             target: SearchTargetCompat,

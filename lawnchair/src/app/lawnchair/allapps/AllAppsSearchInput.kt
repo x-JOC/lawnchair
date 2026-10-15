@@ -438,6 +438,12 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     }
 
     override fun onAppsUpdated() {
+        // Search rows read label, icon and disabled state from the apps store when they bind, and
+        // rows whose result did not change are not rebound. Rebind what is on screen against the
+        // updated store, including rows hidden because their app was not in the store yet.
+        if (::apps.isInitialized && apps.hasSearchResults()) {
+            appsView.mSearchRecyclerView.adapter?.let { it.notifyItemRangeChanged(0, it.itemCount) }
+        }
         searchBarController.refreshSearchResult()
     }
 

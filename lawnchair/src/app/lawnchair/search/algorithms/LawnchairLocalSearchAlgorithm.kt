@@ -55,6 +55,9 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
     private val appState = LauncherAppState.getInstance(context)
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    // Written on the model executor, cancelled from the main thread.
+    @Volatile
     private var currentJob: Job? = null
     private var modelRetryJob: Job? = null
 
@@ -71,6 +74,9 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
 
     override fun doSearch(query: String, callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
         modelRetryJob?.cancel()
+        // Also cancelled in the model task below, but that can run late when the model executor is
+        // busy, and a stale job past its debounce would still start the providers.
+        currentJob?.cancel()
         modelRetryJob = appState.model.runWhenModelLoaded(coroutineScope) { apps ->
             val appResults = appSearchProvider.search(context, query, apps)
             val shortcutResults = shortcutSearchProvider.search(context, appResults)

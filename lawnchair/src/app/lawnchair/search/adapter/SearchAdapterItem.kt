@@ -25,9 +25,10 @@ data class SearchAdapterItem(
 
     override fun isContentSame(other: BaseAllAppsAdapter.AdapterItem): Boolean {
         if (other !is SearchAdapterItem) return false
-        // ActivityAllAppsContainerView.setSearchResults clears the highlighted item before every
-        // diff, and LawnchairSearchAdapterProvider only finds the quick-launch view again when it
-        // binds it. Always rebind the quick-launch row so Enter-to-launch and its highlight survive.
+        // AllAppsSearchInput.onSearchResult diffs first (apps.setSearchResults), then
+        // appsView.setSearchResults clears the highlighted item; rows rebind at the next layout.
+        // LawnchairSearchAdapterProvider only sets the quick-launch view again when it binds it,
+        // so always rebind the quick-launch row to keep Enter-to-launch and its highlight.
         if (isQuickLaunch || other.isQuickLaunch) return false
         return other.viewType == viewType &&
             // The ripple mask is built from the background when the row is bound.

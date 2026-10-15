@@ -326,10 +326,11 @@ data class SearchTargetCompat(
         const val RESULT_TYPE_SEARCH_SETTINGS = 1 shl 12
 
         /**
-         * [extras] key for a stable identity of an icon whose pixels do not follow from the target
-         * id and title (a contact photo, a file thumbnail). Only read by [isContentSameAs].
+         * [extras] key for a stable identity of what a row shows beyond its id and title: a contact
+         * photo, a file thumbnail, or an app's label, icon and disabled state. Only read by
+         * [isContentSameAs].
          */
-        const val EXTRA_ICON_KEY = "icon_key"
+        const val EXTRA_CONTENT_KEY = "content_key"
 
         // The extras the search result views read, with the same getters. Keep in sync with them.
         private val BOOLEAN_CONTENT_EXTRAS = arrayOf(
@@ -345,7 +346,7 @@ data class SearchTargetCompat(
             "class",
             // SearchResultIconRow: calculator result copied on tap
             "result",
-            EXTRA_ICON_KEY,
+            EXTRA_CONTENT_KEY,
         )
         private val INT_CONTENT_EXTRAS = arrayOf(
             // SearchResultEmptyState
@@ -364,6 +365,8 @@ private fun ShortcutInfo?.hasSameContentAs(other: ShortcutInfo?): Boolean {
     return id == other.id &&
         `package` == other.`package` &&
         userHandle == other.userHandle &&
+        // Bumped by the system whenever the shortcut changes, including its icon.
+        lastChangedTimestamp == other.lastChangedTimestamp &&
         shortLabel == other.shortLabel &&
         longLabel == other.longLabel &&
         isEnabled == other.isEnabled

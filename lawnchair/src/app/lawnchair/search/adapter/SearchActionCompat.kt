@@ -223,12 +223,12 @@ private fun Intent?.isSameTargetAs(other: Intent?): Boolean = if (this == null |
  * Compares where two icons come from rather than the [Icon] objects. Resource and URI icons are
  * compared by resource or URI. Bitmap icons are rebuilt for every result set, so they count as the
  * same: their pixels follow from the kind of target, its id and its title, and where they do not
- * (contact photo, file thumbnail) the target carries [SearchTargetCompat.EXTRA_ICON_KEY].
+ * (contact photo, file thumbnail) the target carries [SearchTargetCompat.EXTRA_CONTENT_KEY].
  */
 private fun Icon?.hasSameSourceAs(other: Icon?): Boolean {
     if (this === other) return true
     if (this == null || other == null) return false
-    // Icon.getType() and the per-type getters are API 28+; older releases rely on the id and EXTRA_ICON_KEY.
+    // Icon.getType() and the per-type getters are API 28+; older releases rely on the id and EXTRA_CONTENT_KEY.
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return true
     if (type != other.type) return false
     return when (type) {

@@ -61,8 +61,31 @@ class SearchTargetFactory(
         ).apply {
             setPackageName(componentName?.packageName ?: "")
             setUserHandle(user)
-            setExtras(bundleOf("class" to (componentName?.className ?: "")))
+            setExtras(
+                bundleOf(
+                    "class" to (componentName?.className ?: ""),
+                    SearchTargetCompat.EXTRA_CONTENT_KEY to appContentKey(appInfo),
+                ),
+            )
         }.build()
+    }
+
+    /**
+     * What `SearchResultIcon.bindFromApp` shows that the target id does not capture: label, icon,
+     * and the disabled, suspended, quiet-profile, archived and download states.
+     */
+    private fun appContentKey(appInfo: AppInfo): String {
+        val bitmap = appInfo.bitmap
+        return listOf(
+            appInfo.title,
+            appInfo.contentDescription,
+            appInfo.runtimeStatusFlags,
+            appInfo.progressLevel,
+            // A new BitmapInfo is created whenever the icon changes (app update, icon pack, theme).
+            System.identityHashCode(bitmap),
+            System.identityHashCode(bitmap.themedBitmap),
+            bitmap.flags,
+        ).joinToString("|")
     }
 
     fun createShortcutTarget(shortcutInfo: ShortcutInfo): SearchTargetCompat {
@@ -283,7 +306,7 @@ class SearchTargetFactory(
             SearchTargetCompat.RESULT_TYPE_CONTACT_TILE,
             CONTACT,
             // The photo comes from this URI, not from the id.
-            bundleOf(SearchTargetCompat.EXTRA_ICON_KEY to info.uri),
+            bundleOf(SearchTargetCompat.EXTRA_CONTENT_KEY to info.uri),
         )
     }
 
@@ -318,7 +341,7 @@ class SearchTargetFactory(
             SearchTargetCompat.RESULT_TYPE_FILE_TILE,
             FILES,
             // The thumbnail follows the file content, which can change under the same path.
-            bundleOf(SearchTargetCompat.EXTRA_ICON_KEY to info.dateModified.toString()),
+            bundleOf(SearchTargetCompat.EXTRA_CONTENT_KEY to info.dateModified.toString()),
         )
     }
 

@@ -197,6 +197,11 @@ fun Activity.showFullScreenOverlay(
 ) {
     val pref2 = PreferenceManager2.getInstance(this)
     val animationMode = pref2.closingAppOverlay.firstCached()
+    if (animationMode == FullScreenOverlayMode.NONE) {
+        // Nothing to show: do not build, attach and detach a software-layer view.
+        onOverlayReady()
+        return
+    }
     val overlayView = FullScreenOverlayView(this)
     val targetRootView = rootView ?: window.decorView.findViewById<ViewGroup>(android.R.id.content)
 
@@ -216,9 +221,7 @@ fun Activity.showFullScreenOverlay(
             }
         }
 
-        FullScreenOverlayMode.NONE -> {
-            targetRootView?.removeView(overlayView)
-            onOverlayReady()
-        }
+        // Handled by the early return above.
+        FullScreenOverlayMode.NONE -> Unit
     }
 }

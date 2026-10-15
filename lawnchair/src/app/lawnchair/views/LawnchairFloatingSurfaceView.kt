@@ -27,6 +27,8 @@ import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.launcher
+import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.preferences2.firstCached
 import com.android.app.animation.Interpolators
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.CellLayout
@@ -144,6 +146,9 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
 
         viewsToAnimate.forEach(
             Consumer { view: View? ->
+                // Scale the container as a cached hardware layer, like AOSP's content animation
+                // in QuickstepTransitionManager. The end runnable restores LAYER_TYPE_NONE.
+                view!!.setLayerType(LAYER_TYPE_HARDWARE, null)
                 val scaleAnim =
                     ObjectAnimator.ofFloat<View?>(view, LauncherAnimUtils.SCALE_PROPERTY, *scales)
                         .setDuration(CONTENT_SCALE_DURATION.toLong() * 3)
@@ -166,39 +171,46 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
         return Pair<AnimatorSet?, Runnable?>(launcherAnimator, endListener)
     }
 
-    private fun getBackgroundAnimator(): ObjectAnimator {
-        val depthController = DepthController(mLauncher)
+    /**
+     * Returns the depth animator for the swipe-home transition, or null when it would do nothing.
+     *
+     * The temporary [DepthController] starts at depth 0, animates to the depth of the current
+     * state, then to the depth of the launcher's own controller. In NORMAL all of these are 0, so
+     * every frame returns early in setDepth. With the depth effect off, the temporary controller
+     * never applies depth or blur. In both cases, skip the controller, the effect layer and both
+     * animators.
+     */
+    private fun getBackgroundAnimator(): ObjectAnimator? {
         val targetDepth = mLauncher.stateManager.state.getDepth<LawnchairLauncher?>(mLauncher)
+        val launcherDepth = mLauncher.depthController.stateDepth.value
+        val depthEffectEnabled = Utilities.ATLEAST_R &&
+            PreferenceManager2.getInstance(mLauncher).wallpaperDepthEffect.firstCached()
+        if (!depthEffectEnabled || (targetDepth == 0f && launcherDepth == 0f)) {
+            return null
+        }
+
+        val depthController = DepthController(mLauncher)
 
         val backgroundRadiusAnim = createDepthAnimator(
             depthController,
             targetDepth,
             onEnd = {
-                if (Utilities.ATLEAST_R) {
-                    val viewRootImpl = mLauncher.dragLayer.getViewRootImpl()
-                    val parent = viewRootImpl?.surfaceControl
-                    val dimLayer: SurfaceControl = SurfaceControl.Builder()
-                        .setName("Blur layer")
-                        .setParent(parent)
-                        .setOpaque(false)
-                        .setEffectLayer()
-                        .build()
+                val viewRootImpl = mLauncher.dragLayer.getViewRootImpl()
+                val parent = viewRootImpl?.surfaceControl
+                val dimLayer: SurfaceControl = SurfaceControl.Builder()
+                    .setName("Blur layer")
+                    .setParent(parent)
+                    .setOpaque(false)
+                    .setEffectLayer()
+                    .build()
 
-                    createDepthAnimator(
-                        depthController,
-                        mLauncher.depthController.stateDepth.value,
-                    ) {
-                        depthController.dispose()
-                        SurfaceControl.Transaction().remove(dimLayer).apply()
-                    }.start()
-                } else {
-                    createDepthAnimator(
-                        depthController,
-                        mLauncher.depthController.stateDepth.value,
-                    ) {
-                        depthController.dispose()
-                    }.start()
-                }
+                createDepthAnimator(
+                    depthController,
+                    mLauncher.depthController.stateDepth.value,
+                ) {
+                    depthController.dispose()
+                    SurfaceControl.Transaction().remove(dimLayer).apply()
+                }.start()
             },
         )
 
@@ -409,7 +421,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
             val startDelay = launcher.getSingleFrameMs()
             val launcherContentAnimator: Pair<AnimatorSet?, Runnable?> =
                 view.getLauncherContentAnimator(startDelay)
-            anim.playTogether(launcherContentAnimator.first, view.getBackgroundAnimator())
+            anim.playTogether(listOfNotNull(launcherContentAnimator.first, view.getBackgroundAnimator()))
             anim.addListener(
                 object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {

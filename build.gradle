@@ -236,7 +236,16 @@ android {
         }
 
         release {
-            resValue("string", "derived_app_name", "Lawnchair")
+            // Personal release build. With the play flavor this is app.lawnchair.play.debug, the id
+            // of the daily app on the phone, so it installs over it and keeps its pinned shortcuts
+            // (Android ties those to the launcher's package).
+            applicationIdSuffix ".debug"
+            resValue("string", "derived_app_name", "R Lawnchair")
+            // Like the debug build: keep Quickstep on newer Android versions too.
+            manifestPlaceholders.quickstepMinSdk = "0"
+            manifestPlaceholders.quickstepMaxSdk = "100000"
+            buildConfigField "int", "QUICKSTEP_MIN_SDK", "0"
+            buildConfigField "int", "QUICKSTEP_MAX_SDK", "100000"
             minifyEnabled true
             shrinkResources true
             pseudoLocalesEnabled false

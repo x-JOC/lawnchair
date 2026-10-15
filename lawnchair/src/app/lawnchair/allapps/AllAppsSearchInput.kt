@@ -35,6 +35,8 @@ import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.launcher
 import app.lawnchair.preferences.PreferenceManager
@@ -98,6 +100,12 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     private lateinit var apps: LawnchairAlphabeticalAppsList<*>
     private lateinit var appsView: ActivityAllAppsContainerView<*>
     private var searchAlgorithm: LawnchairSearchAlgorithm? = null
+    private val destroyObserver = object : DefaultLifecycleObserver {
+        override fun onDestroy(owner: LifecycleOwner) {
+            searchAlgorithm?.destroy()
+            searchAlgorithm = null
+        }
+    }
 
     private var isDirectFocus = false
     private var focusedResultTitle = ""
@@ -450,8 +458,12 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     override fun initializeSearch(appsView: ActivityAllAppsContainerView<*>) {
         apps = appsView.searchResultList as LawnchairAlphabeticalAppsList<*>
         this.appsView = appsView
+        // Release the previous algorithm (scopes, pref listeners, search session) before replacing
+        // it, and make sure the current one is released when the Launcher is destroyed.
+        this.searchAlgorithm?.destroy()
         val algorithm = LawnchairSearchAlgorithm.create(context)
         this.searchAlgorithm = algorithm
+        launcher.lifecycle.addObserver(destroyObserver)
         searchBarController.initialize(
             algorithm,
             input,

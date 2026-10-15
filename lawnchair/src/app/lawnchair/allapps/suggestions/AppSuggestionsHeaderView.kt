@@ -202,6 +202,13 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     /** How strongly the grown bar is filled for the results, like [fillAlpha] for the tabs. */
     private var resultsFill = 0f
 
+    /**
+     * Whether the tabs are coming back in the bar that held the results, after the query was
+     * cleared: [resultsSpring] then takes the bar straight to the tabs' size, and the tabs only
+     * size it once it gets there ([onResultsSettled]).
+     */
+    private var tabsReturning = false
+
     private val resultsSpring = SpringAnimation(this, RESULTS_EXTENT).apply {
         setSpring(SpringForce().setStiffness(RESULTS_STIFFNESS).setDampingRatio(RESULTS_DAMPING_RATIO))
         setMinimumVisibleChange(DynamicAnimation.MIN_VISIBLE_CHANGE_PIXELS)
@@ -308,7 +315,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         val left = input.left + input.translationX + bar.left + bar.translationX
         val top = input.top + input.translationY + bar.top + bar.translationY
         barBottom = top + bar.height
-        val tabsExtent = if (tabsShown) max(0f, this.top + translationY + height - barBottom) * reveal.coerceIn(0f, MAX_REVEAL) else 0f
+        val tabsExtent = if (tabsShown && !tabsReturning) max(0f, this.top + translationY + height - barBottom) * reveal.coerceIn(0f, MAX_REVEAL) else 0f
         shapeRect.set(left, top, left + bar.width, barBottom + max(tabsExtent, resultsExtent))
         shapeRadius = min(input.barCornerRadius(), bar.height / 2f)
         shapePath.rewind()
@@ -660,7 +667,17 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         resultsPending = false
         if (shown != resultsShown) {
             resultsShown = shown
-            if (shown) holdBarForResults()
+            val list = (parent as? ActivityAllAppsContainerView<*>)?.searchRecyclerView
+            list?.animate()?.cancel()
+            list?.alpha = 1f
+            if (shown) {
+                holdBarForResults()
+                // The results come in at once (SearchTransitionController), with a quick fade.
+                if (list != null && mayAnimate()) {
+                    list.alpha = 0f
+                    list.animate().alpha(1f).setDuration(RESULTS_FADE_DURATION_MS).setInterpolator(Interpolators.LINEAR).start()
+                }
+            }
         }
         updateResultsTarget()
     }
@@ -694,10 +711,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     private fun holdBarForResults() {
         removeCallbacks(finishResults)
         val current = if (updateShape()) shapeRect.bottom - barBottom else 0f
-        if (current > resultsExtent) {
-            resultsSpring.cancel()
-            setResultsExtent(current)
-        }
+        // Stops where it is, for example on its way back to the tabs.
+        resultsSpring.cancel()
+        setResultsExtent(max(current, resultsExtent))
         resultsTarget = resultsExtent
         resultsFill = 1f
         resultsTakeBar = true
@@ -718,10 +734,11 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         val target = when {
             resultsShown -> resultsContentExtent() ?: resultsTarget
             resultsPending -> resultsTarget
+            tabsReturning -> tabsFullExtent() ?: resultsTarget
             else -> 0f
         }
         if (target == resultsTarget && (resultsSpring.isRunning || resultsExtent == target)) {
-            if (!resultsShown && !resultsPending && resultsExtent == 0f) onResultsSettled()
+            if (!resultsSpring.isRunning) onResultsSettled()
             return
         }
         resultsTarget = target
@@ -757,6 +774,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         return (min(listTop + contentBottom + resultsPaddingBottom, limit) - barBottom).coerceAtLeast(0f)
     }
 
+    /** How far below the search row the bar reaches with all of the tabs, or null before they are laid out. */
+    private fun tabsFullExtent(): Float? {
+        if (isLayoutRequested || height == 0 || !updateShape()) return null
+        return max(0f, top + translationY + height - barBottom)
+    }
+
     /** The top of the keyboard in [container]'s coordinates, or no limit while it's hidden. */
     private fun keyboardTop(container: View): Float {
         val ime = ViewCompat.getRootWindowInsets(container)?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
@@ -777,18 +800,31 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
      * its background again (see [HAND_OVER_DELAY_MS]); the tabs draw their own if they show.
      */
     private fun onResultsSettled() {
-        if (resultsShown || resultsPending || resultsExtent > 0f || !resultsTakeBar) return
+        if (resultsShown || resultsPending || !resultsTakeBar || resultsSpring.isRunning) return
+        if (tabsReturning) {
+            if (resultsExtent != resultsTarget) return
+            // The tabs hold the bar from here, at the size it has come to.
+            tabsReturning = false
+            setResultsExtent(0f)
+        } else if (resultsExtent > 0f) {
+            return
+        }
         removeResultsPreDraw()
         resultsTakeBar = false
         applyBarTakenOver()
         removeCallbacks(finishResults)
-        if (mayAnimate()) postDelayed(finishResults, HAND_OVER_DELAY_MS) else finishResults.run()
+        // The tabs fill the bar themselves while they show.
+        if (mayAnimate() && !showing) postDelayed(finishResults, HAND_OVER_DELAY_MS) else finishResults.run()
     }
 
     /** Drops the results from the grown bar right away, for example when the drawer closes. */
     private fun resetResultsNow() {
         resultsShown = false
         resultsPending = false
+        if (tabsReturning) {
+            tabsReturning = false
+            setReveal(1f)
+        }
         resultsSpring.cancel()
         resultsTarget = 0f
         setResultsExtent(0f)
@@ -875,7 +911,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         if (show) {
             visibility = VISIBLE
             setBarTakenOver(true)
-            if (animated) {
+            if (animated && resultsActive()) {
+                animateBackFromResults()
+            } else if (animated) {
                 animateIn()
             } else {
                 cancelAnimations()
@@ -965,6 +1003,53 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     }
 
     /**
+     * Brings the tabs back into the bar that holds the results, when the query is cleared: the bar
+     * goes straight from the results' size to the tabs' on [resultsSpring], and the tabs simply
+     * fade in, in place. The entrance of [animateIn] is only for a new search.
+     */
+    private fun animateBackFromResults() {
+        cancelAnimations()
+        tabsReturning = true
+        setReveal(1f)
+        setFillAlpha(1f)
+        setHairlineAlpha(1f)
+        tabBar.indicatorReveal = 1f
+        grid.endEntrance()
+        tabBar.alpha = 0f
+        content.alpha = 0f
+        entranceAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = RETURN_DURATION_MS
+            interpolator = Interpolators.LINEAR
+            addUpdateListener { animator ->
+                val alpha = animator.animatedValue as Float
+                tabBar.alpha = alpha
+                content.alpha = alpha
+            }
+            addListener(
+                object : AnimationSuccessListener() {
+                    override fun onAnimationSuccess(animation: Animator) {
+                        entranceAnimator = null
+                        resetContent()
+                    }
+                },
+            )
+            start()
+        }
+        updateResultsTarget()
+    }
+
+    /**
+     * Gives the bar's size back to the tabs' own [reveal] if they were still coming back from the
+     * results, at the size the bar has, so it carries on from there.
+     */
+    private fun stopTabsReturning() {
+        if (!tabsReturning) return
+        tabsReturning = false
+        val full = tabsFullExtent()
+        setReveal(if (full != null && full > 0f) (resultsExtent / full).coerceIn(0f, 1f) else 0f)
+    }
+
+    /**
      * Closes the panel quickly: the bar shrinks back into the search bar while the content fades
      * and slides up. When the search bar then shows its own background (the search box no longer
      * has focus and the query is empty), the bar keeps its fill and hands it over to the search
@@ -972,6 +1057,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
      */
     private fun animateOut() {
         cancelAnimations()
+        stopTabsReturning()
         val handOver = !searchBoxFocused && queryEmpty
         val startReveal = reveal
         val startFillAlpha = fillAlpha
@@ -1012,6 +1098,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     /** Hides the panel and the grown bar right away, and gives the search bar its background back. */
     private fun hideNow() {
         removeCallbacks(finishHide)
+        tabsReturning = false
         setReveal(0f)
         setFillAlpha(0f)
         visibility = GONE
@@ -1201,9 +1288,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
          */
         private const val HAND_OVER_DELAY_MS = 50L
 
-        /** The spring the bar grows and shrinks on for the results: like the tabs', without the bounce. */
+        /** The spring the bar changes size on for the results and back: like the tabs', without the bounce. */
         private const val RESULTS_STIFFNESS = 600f
-        private const val RESULTS_DAMPING_RATIO = 0.9f
+        private const val RESULTS_DAMPING_RATIO = 1f
+
+        /** The results fading in as they first show. */
+        private const val RESULTS_FADE_DURATION_MS = 120L
 
         private val RESULTS_EXTENT = object : FloatPropertyCompat<AppSuggestionsHeaderView>("resultsExtent") {
             override fun setValue(view: AppSuggestionsHeaderView, value: Float) = view.setResultsExtent(value)

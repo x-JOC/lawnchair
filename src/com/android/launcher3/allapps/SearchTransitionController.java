@@ -136,6 +136,11 @@ public class SearchTransitionController extends RecyclerViewAnimationController 
             timeInterpolator = INSTANT;
             mSkipNextAnimationWithinAllApps = false;
         }
+        // LC-Note: results shown in the grown search bar come and go at once; the bar's own
+        // change of size, and a quick fade, carry the change instead (AppSuggestionsHeaderView).
+        if (mAllAppsContainerView.isSearchResultsInBox()) {
+            timeInterpolator = INSTANT;
+        }
         return timeInterpolator;
     }
 

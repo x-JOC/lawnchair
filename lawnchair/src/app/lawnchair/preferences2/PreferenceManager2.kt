@@ -57,7 +57,6 @@ import app.lawnchair.views.overlay.FullScreenOverlayMode
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.InvariantDeviceProfile.INDEX_DEFAULT
-import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.LauncherPrefs.Companion.ENABLE_TWOLINE_ALLAPPS_TOGGLE
 import com.android.launcher3.R
@@ -143,9 +142,6 @@ class PreferenceManager2 @Inject constructor(
                 ?: IconShapeManager.getSystemIconShape(context)
         },
         save = { it.toString() },
-        onSet = {
-            reloadHelper.reloadIcons()
-        },
     )
 
     val folderShape = preference(
@@ -159,9 +155,6 @@ class PreferenceManager2 @Inject constructor(
                 ?: IconShapeManager.getSystemIconShape(context)
         },
         save = { it.toString() },
-        onSet = {
-            reloadHelper.reloadIcons()
-        },
     )
 
     val customIconShape = preference(
@@ -884,8 +877,10 @@ class PreferenceManager2 @Inject constructor(
             .distinctUntilChanged()
             .onEach { shape ->
                 initializeIconShape(shape)
+                // The reload itself is driven by LawnchairThemeManager (ThemeChangeListener in
+                // ModelInitializer); here we only make sure the manager is instantiated and the
+                // mask is updated first.
                 L3ThemeManager.INSTANCE.get(context)
-                LauncherAppState.getInstance(context).model.reloadIfActive()
             }
             .launchIn(scope)
 

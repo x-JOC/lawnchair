@@ -944,7 +944,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
             stripEmptyScreens();
         }
 
-        persistCurrentScreenOrderSync();
+        persistCurrentScreenOrder();
 
         if (onComplete != null) {
             onComplete.run();
@@ -993,7 +993,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
 
         mWorkspaceScreens.put(newScreenId, cl);
         mScreenOrder.add(newScreenId);
-        persistCurrentScreenOrderSync();
+        persistCurrentScreenOrder();
 
         return newScreenId;
     }
@@ -1184,7 +1184,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
         if (storedDefault >= getChildCount()) {
             setDefaultPage(DEFAULT_PAGE);
         }
-        persistCurrentScreenOrderSync();
+        persistCurrentScreenOrder();
     }
 
     /**
@@ -3418,7 +3418,7 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
         }
         applyScreenOrderToChildViews();
         if (screenSwapMap.size() > 0) {
-            mLauncher.getModelWriter().persistWorkspaceScreenOrderSync(getPersistableScreenOrder());
+            mLauncher.getModelWriter().persistWorkspaceScreenOrder(getPersistableScreenOrder());
             mDeferStripEmptyScreensForScreenRemap = true;
             mLauncher.getModelWriter().moveWorkspaceScreensInDatabase(
                     screenSwapMap, this::onWorkspaceScreenRemapFinished);
@@ -3543,11 +3543,11 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
         mDeferStripEmptyScreensForScreenRemap = false;
     }
 
-    private void persistCurrentScreenOrderSync() {
+    private void persistCurrentScreenOrder() {
         if (mLauncher.isWorkspaceLoading()) {
             return;
         }
-        mLauncher.getModelWriter().persistWorkspaceScreenOrderSync(getPersistableScreenOrder());
+        mLauncher.getModelWriter().persistWorkspaceScreenOrder(getPersistableScreenOrder());
     }
 
     private void applyScreenOrderToChildViews() {

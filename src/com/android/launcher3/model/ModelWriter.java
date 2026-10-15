@@ -310,14 +310,17 @@ public class ModelWriter {
     }
 
     /**
-     * Persists explicit workspace screen order synchronously.
+     * Persists explicit workspace screen order. Uses the asynchronous {@code apply()} path: the
+     * in-memory SharedPreferences map is updated before this returns, so every reader (UI and
+     * loader thread) sees the new order immediately; only the disk flush is deferred, which keeps
+     * the UI thread off the disk after a page drag.
      */
-    public void persistWorkspaceScreenOrderSync(IntArray screenOrder) {
+    public void persistWorkspaceScreenOrder(IntArray screenOrder) {
         if (screenOrder == null || screenOrder.isEmpty()) {
             return;
         }
         String serialized = screenOrder.toConcatString();
-        LauncherPrefs.get(mContext).putSync(LauncherPrefs.WORKSPACE_SCREEN_ORDER.to(serialized));
+        LauncherPrefs.get(mContext).put(LauncherPrefs.WORKSPACE_SCREEN_ORDER.to(serialized));
     }
 
     /**

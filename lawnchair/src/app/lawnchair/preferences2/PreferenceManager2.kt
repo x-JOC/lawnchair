@@ -71,7 +71,6 @@ import com.android.launcher3.util.DynamicResource
 import com.android.launcher3.util.SafeCloseable
 import com.patrykmichalik.opto.core.PreferenceManager
 import com.patrykmichalik.opto.core.firstBlocking
-import com.patrykmichalik.opto.core.setBlocking
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -84,6 +83,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 @LauncherAppSingleton
@@ -167,7 +167,7 @@ class PreferenceManager2 @Inject constructor(
                 )
         },
         save = { it.toString() },
-        onSet = { it?.let(iconShape::setBlocking) },
+        onSet = { shape -> shape?.let { scope.launch { iconShape.set(it) } } },
     )
 
     val customFolderShape = preference(
@@ -180,7 +180,7 @@ class PreferenceManager2 @Inject constructor(
                 )
         },
         save = { it.toString() },
-        onSet = { it?.let(folderShape::setBlocking) },
+        onSet = { shape -> shape?.let { scope.launch { folderShape.set(it) } } },
     )
 
     val alwaysReloadIcons = preference(

@@ -52,8 +52,10 @@ class PreferenceManager @Inject constructor(
     private val mRecentsModel get() = RecentsModel.INSTANCE.get(context)
     private val las get() = LauncherAppState.INSTANCE.get(context)
     private val reloadIcons: () -> Unit = {
-        mRecentsModel.onThemeChanged()
         Executors.MODEL_EXECUTOR.execute {
+            // RecentsModel.onThemeChanged only posts to RECENTS_MODEL_EXECUTOR, but resolving the
+            // singleton can construct it, so keep that off the caller (main) thread too.
+            mRecentsModel.onThemeChanged()
             // All of this is like refreshAndReloadLauncher in ModelInitializer
             LauncherIcons.clearPool(context)
             las.iconCache.clearMemoryCache()

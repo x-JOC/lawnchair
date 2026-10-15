@@ -344,6 +344,8 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         mSuggestionsPanel = (AppSuggestionsHeaderView) getLayoutInflater().inflate(
                 R.layout.app_suggestions_panel, this, false);
         addView(mSuggestionsPanel);
+        // LC-Note: see getChildDrawingOrder.
+        setChildrenDrawingOrderEnabled(true);
 
         mSearchContainer = inflateSearchBar();
         if (!isSearchBarFloating()) {
@@ -1568,6 +1570,28 @@ public class ActivityAllAppsContainerView<T extends Context & ActivityContext>
         mNavBarScrimHeight = computeNavBarScrimHeight(insets);
         applyAdapterSideAndBottomPaddings(mActivityContext.getDeviceProfile());
         return super.dispatchApplyWindowInsets(insets);
+    }
+
+    /**
+     * LC-Note: results shown in the search bar grown to hold them are drawn, and so take touches,
+     * above the lists and the header, which stay on screen under them: right before the
+     * suggestion tabs. Otherwise the list under the grown bar would get the taps and long presses
+     * meant for the results. The order is unchanged when the results show on a page of their own.
+     */
+    @Override
+    protected int getChildDrawingOrder(int childCount, int drawingPosition) {
+        if (mSearchRecyclerView == null || mSearchRecyclerView.getVisibility() != VISIBLE
+                || !isSearchResultsInBox()) {
+            return drawingPosition;
+        }
+        int search = indexOfChild(mSearchRecyclerView);
+        int panel = indexOfChild(mSuggestionsPanel);
+        if (search < 0 || panel <= search
+                || drawingPosition < search || drawingPosition >= panel) {
+            return drawingPosition;
+        }
+        // The children between the search list and the tabs move down one place.
+        return drawingPosition == panel - 1 ? search : drawingPosition + 1;
     }
 
     @Override

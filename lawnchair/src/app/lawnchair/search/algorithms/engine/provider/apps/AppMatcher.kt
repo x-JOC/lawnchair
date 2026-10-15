@@ -37,6 +37,7 @@ internal enum class MatchType(val priority: Int) {
  */
 internal object AppMatcher {
     private const val FUZZY_SCORE_CUTOFF = 65
+    private val WHITESPACE = Regex("\\s+")
 
     fun match(appName: String, query: String): MatchResult {
         val app = appName.lowercase(Locale.getDefault())
@@ -52,8 +53,8 @@ internal object AppMatcher {
         }
 
         // Tokenize once and reuse
-        val tokens = app.split(Regex("\\s+")).filter { it.isNotBlank() }
-        val qTokens = query.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val tokens = app.split(WHITESPACE).filter { it.isNotBlank() }
+        val qTokens = query.split(WHITESPACE).filter { it.isNotBlank() }
 
         // Rule 2: Initials (for single-token queries)
         if (query.none { it.isWhitespace() }) {

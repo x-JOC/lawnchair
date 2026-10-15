@@ -37,11 +37,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * How long the query must stay unchanged before the non-app providers (settings, files, contacts
+ * and web suggestions, which is a network request) start. App and shortcut results do not wait.
+ */
+private const val NON_APP_PROVIDERS_DEBOUNCE_MS = 120L
 
 class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm(context) {
 
@@ -70,12 +77,36 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
 
             currentJob?.cancel()
             currentJob = coroutineScope.launch {
+                val calcResult = CalculatorSearchProvider.search(context, query)
+                    .firstOrNull()
+                    .orEmpty()
+                val actionResults = generateActionResults(query)
+
+                suspend fun publish(nonAppResults: List<SearchResult>) {
+                    val allResults = appResults + shortcutResults + calcResult + nonAppResults + actionResults
+
+                    val searchTargets = translateToSearchTargets(allResults)
+                    setFirstItemQuickLaunch(searchTargets)
+                    val adapterItems = transformSearchResults(searchTargets)
+                    withContext(Dispatchers.Main) {
+                        callback.onSearchResult(query, ArrayList(adapterItems))
+                    }
+                }
+
+                // App and shortcut matches are computed synchronously above, so they appear
+                // immediately and are then augmented as the other providers complete.
+                var publishedNonAppResults = emptyList<SearchResult>()
+                publish(publishedNonAppResults)
+
+                // Debounce: the next keystroke cancels this job (doSearch and cancel() both cancel
+                // currentJob), so the non-app providers, including the web suggestion request,
+                // only start once the user pauses typing.
+                delay(NON_APP_PROVIDERS_DEBOUNCE_MS)
+
                 // Each provider flow starts by emitting an empty list so that combine() can
                 // produce a first value without waiting for the slowest provider (e.g. web
                 // suggestions blocked on a network roundtrip, or contacts/files with no
-                // timeout). App and shortcut matches are computed synchronously above, so this
-                // lets them appear immediately and then be augmented as providers complete.
-                // See issue #7325 (symptom 1: results gated behind the slowest provider).
+                // timeout). See issue #7325 (symptom 1: results gated behind the slowest provider).
                 val nonAppProvidersFlow = combine(
                     searchProviders.map { provider ->
                         provider.search(context, query).onStart { emit(emptyList()) }
@@ -85,17 +116,10 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
                 }
 
                 nonAppProvidersFlow.collect { nonAppResults ->
-                    val calcResult = CalculatorSearchProvider.search(context, query)
-                        .firstOrNull()
-
-                    val allResults = appResults + shortcutResults + (calcResult ?: emptyList()) + nonAppResults + generateActionResults(query)
-
-                    val searchTargets = translateToSearchTargets(allResults)
-                    setFirstItemQuickLaunch(searchTargets)
-                    val adapterItems = transformSearchResults(searchTargets)
-                    withContext(Dispatchers.Main) {
-                        callback.onSearchResult(query, ArrayList(adapterItems))
-                    }
+                    // Skip values that are already on screen, such as the first all-empty one.
+                    if (nonAppResults == publishedNonAppResults) return@collect
+                    publishedNonAppResults = nonAppResults
+                    publish(nonAppResults)
                 }
             }
         }

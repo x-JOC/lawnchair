@@ -59,6 +59,12 @@ public class SearchTransitionController extends RecyclerViewAnimationController 
     @Override
     protected void animateToState(boolean goingToSearch, long duration, Runnable onEndRunnable) {
         super.animateToState(goingToSearch, duration, onEndRunnable);
+        // LC-Note: results shown in the search bar grown to hold them come and go over the drawer,
+        // which stays as it is: header rows, scroll position and all.
+        if (mAllAppsContainerView.isSearchResultsInBox()) {
+            getRecyclerView().setVisibility(VISIBLE);
+            return;
+        }
         if (!goingToSearch) {
             mAnimator.addListener(forSuccessCallback(() -> {
                 mAllAppsContainerView.getFloatingHeaderView().setFloatingRowsCollapsed(false);
@@ -81,6 +87,10 @@ public class SearchTransitionController extends RecyclerViewAnimationController 
     @Override
     protected int onProgressUpdated(float searchToAzProgress) {
         int searchHeight = super.onProgressUpdated(searchToAzProgress);
+        // LC-Note: see animateToState.
+        if (mAllAppsContainerView.isSearchResultsInBox()) {
+            return searchHeight;
+        }
 
         FloatingHeaderView headerView = mAllAppsContainerView.getFloatingHeaderView();
 

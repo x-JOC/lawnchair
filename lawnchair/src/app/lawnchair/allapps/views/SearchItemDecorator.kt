@@ -27,6 +27,9 @@ class SearchItemDecorator(private val appsView: ActivityAllAppsContainerView<*>)
     override fun onDraw(c: Canvas, parent: RecyclerView, state: RecyclerView.State) {
         val adapterItems = appsView.mSearchRecyclerView.mApps.adapterItems
         val searchAdapterProvider = appsView.mainAdapterProvider
+        // Inside the search bar grown to hold them, the results sit on the bar's own fill, which
+        // already sets them apart, so only the highlighted result gets a background there.
+        val inGrownBar = appsView.isSearchResultsInBox
         parent.children.forEach { child ->
             val adapterPosition = parent.getChildAdapterPosition(child)
             if (adapterPosition >= 0 && adapterPosition < adapterItems.size) {
@@ -36,7 +39,7 @@ class SearchItemDecorator(private val appsView: ActivityAllAppsContainerView<*>)
                     val isHighlightedItem = child == searchAdapterProvider.highlightedItem
                     val inputHasFocus = appsView.searchUiManager.editText?.hasFocus() == true
                     val isFocused = isHighlightedItem && inputHasFocus
-                    background.draw(c, child, isFocused)
+                    if (isFocused || !inGrownBar) background.draw(c, child, isFocused)
                 }
             }
         }

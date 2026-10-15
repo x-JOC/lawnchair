@@ -36,6 +36,12 @@ public class MediaListener extends MediaController.Callback {
     private final Handler mHandler = new Handler();
     private final FlowCollector<List<StatusBarNotification>> mFlowCollector;
     private List<StatusBarNotification> mNotifications = Collections.emptyList();
+    /**
+     * Set by {@link #onPause()}. While set, {@link #updateTracking()} (reached from the
+     * notification collector and the controller callbacks) does nothing, so a detached listener
+     * cannot re-register itself on the controllers on every playback event.
+     */
+    private boolean mPaused;
 
     public MediaListener(Context context, Consumer<MediaListener> onChange) {
         mContext = context;
@@ -51,13 +57,17 @@ public class MediaListener extends MediaController.Callback {
     }
 
     public void onResume() {
+        mPaused = false;
         updateTracking();
         mFlowCollector.start();
     }
 
     public void onPause() {
-        updateTracking();
+        mPaused = true;
         mFlowCollector.stop();
+        mHandler.removeCallbacks(mOnChange);
+        updateControllers(Collections.emptyList());
+        mTracking = null;
     }
 
     public MediaNotificationController getTracking() {
@@ -79,6 +89,7 @@ public class MediaListener extends MediaController.Callback {
     }
 
     private void updateTracking() {
+        if (mPaused) return;
         updateControllers(getControllers());
 
         if (mTracking != null) {

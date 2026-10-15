@@ -8,9 +8,12 @@ import app.lawnchair.util.requireSystemService
 import app.lawnchair.wallpaper.WallpaperColorsCompat.Companion.HINT_SUPPORTS_DARK_THEME
 import com.android.launcher3.Utilities
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 sealed class WallpaperManagerCompat(val context: Context) {
 
@@ -32,11 +35,21 @@ sealed class WallpaperManagerCompat(val context: Context) {
         listeners.remove(listener)
     }
 
+    /**
+     * Serialises wallpaper-history writes. Listeners that read the history after a colour change
+     * take this lock too; because the save below acquires it before listeners are notified, their
+     * read is queued behind the save.
+     */
+    val saveMutex = Mutex()
+
     protected fun notifyChange() {
-        // Querying/saving wallpapers touches Room, so keep it off the main thread
-        // (notifyChange is invoked from the WallpaperManager color callback on the main looper).
-        scope.launch {
-            if (service.getTopWallpapers().isEmpty()) {
+        // Record every wallpaper change, whether or not the carousel is open. The save touches
+        // Room and bitmaps, so it runs on the app-scoped IO scope (notifyChange is invoked from the
+        // WallpaperManager color callback on the main looper); UNDISPATCHED so the lock is taken
+        // before the listeners below are notified. The scope is never cancelled, so a save cannot
+        // be interrupted halfway through its multi-statement DB sequence.
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            saveMutex.withLock {
                 service.saveWallpaper(wallpaperManager)
             }
         }

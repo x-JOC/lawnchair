@@ -1,7 +1,6 @@
 package app.lawnchair.data.wallpaper.model
 
 import android.app.Application
-import android.app.WallpaperManager
 import app.lawnchair.data.wallpaper.Wallpaper
 import app.lawnchair.wallpaper.WallpaperManagerCompat
 import kotlinx.coroutines.CoroutineScope
@@ -11,7 +10,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
@@ -27,17 +25,13 @@ class WallpaperViewModel(application: Application) {
     val wallpapers: StateFlow<List<Wallpaper>>
         field = MutableStateFlow<List<Wallpaper>>(emptyList())
 
-    private val mutex = Mutex()
-
     private var scope: CoroutineScope? = null
 
     private val listener = object : WallpaperManagerCompat.OnColorsChangedListener {
         override fun onColorsChanged() {
-            scope?.launch {
-                mutex.withLock {
-                    saveWallpaper(wallpaperManagerCompat.wallpaperManager)
-                }
-            }
+            // The compat layer saves every wallpaper change itself; just re-read the history
+            // (queued behind that save) while the carousel is attached.
+            loadTopWallpapers()
         }
     }
 
@@ -54,11 +48,6 @@ class WallpaperViewModel(application: Application) {
         scope = null
     }
 
-    private suspend fun saveWallpaper(wallpaperManager: WallpaperManager) {
-        wallpaperManagerCompat.service.saveWallpaper(wallpaperManager)
-        refreshWallpapers()
-    }
-
     private suspend fun refreshWallpapers() {
         val topWallpapers = wallpaperManagerCompat.service.dao.getTopWallpapers()
         wallpapers.value = topWallpapers
@@ -66,7 +55,7 @@ class WallpaperViewModel(application: Application) {
 
     private fun loadTopWallpapers() {
         scope?.launch {
-            mutex.withLock {
+            wallpaperManagerCompat.saveMutex.withLock {
                 refreshWallpapers()
             }
         }

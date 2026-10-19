@@ -5,6 +5,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.annotation.WorkerThread
+import app.lawnchair.allapps.suggestions.AppLaunchStore
+import app.lawnchair.allapps.suggestions.AppSuggestionRanker
+import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.preferences2.firstCached
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.logger.LauncherAtom.ItemInfo
@@ -29,6 +33,7 @@ import com.android.launcher3.model.PredictionUpdateTask
 import com.android.launcher3.model.PredictorState
 import com.android.launcher3.model.WidgetsPredictionUpdateTask
 import com.android.launcher3.pm.UserCache
+import com.android.launcher3.util.ComponentKey
 import com.android.launcher3.util.Executors.MODEL_EXECUTOR
 import com.android.quickstep.logging.StatsLogCompatManager
 import kotlin.time.Duration.Companion.hours
@@ -55,6 +60,7 @@ class LawnchairAppPredictor(private val context: Context) : StatsLogCompatManage
     private val eventResolver = PredictionEventResolver(userCache)
     private val usageStatsRanker = UsageStatsRanker(context)
     private val predictionEngine = LawnchairPredictionEngine(context, usageStatsRanker)
+    private val prefs2: PreferenceManager2 by lazy { PreferenceManager2.getInstance(context) }
 
     private var dismissedApps: MutableSet<String> = loadDismissedApps()
     private var lastPruneTime = 0L
@@ -144,12 +150,13 @@ class LawnchairAppPredictor(private val context: Context) : StatsLogCompatManage
             dismissedApps = loadDismissedApps()
         }
 
+        val mostUsedRanked = if (prefs2.predictionMode.firstCached() == MostUsedPredictor) getMostUsedRanked() else emptyList()
         val hotseatRanked = hotseatStore.getRanked()
         val allAppsRanked = allAppsStore.getRanked()
         val fallbackRanked = predictionEngine.getFallbackRanked()
-        val allAppsCandidateRanked = predictionEngine.mergeRanked(allAppsRanked, hotseatRanked, fallbackRanked)
-        val hotseatCandidateRanked = predictionEngine.mergeRanked(hotseatRanked, allAppsRanked, fallbackRanked)
-        val widgetCandidateRanked = predictionEngine.mergeRanked(hotseatRanked, allAppsRanked, fallbackRanked)
+        val allAppsCandidateRanked = predictionEngine.mergeRanked(mostUsedRanked, allAppsRanked, hotseatRanked, fallbackRanked)
+        val hotseatCandidateRanked = predictionEngine.mergeRanked(mostUsedRanked, hotseatRanked, allAppsRanked, fallbackRanked)
+        val widgetCandidateRanked = predictionEngine.mergeRanked(mostUsedRanked, hotseatRanked, allAppsRanked, fallbackRanked)
         val currentDismissedApps = dismissedApps.toSet()
         val occupiedHotseatItems = predictionEngine.getOccupiedHotseatItems(dataModel)
         val excludedHotseatItems = occupiedHotseatItems + currentDismissedApps
@@ -172,6 +179,15 @@ class LawnchairAppPredictor(private val context: Context) : StatsLogCompatManage
         model.enqueueModelUpdateTask(PredictionUpdateTask(allAppsState, allAppsTargets))
         model.enqueueModelUpdateTask(PredictionUpdateTask(hotseatState, hotseatTargets))
         model.enqueueModelUpdateTask(WidgetsPredictionUpdateTask(widgetsState, widgetTargets))
+    }
+
+    /** The apps opened most from the launcher, as store keys, for [MostUsedPredictor]. */
+    @WorkerThread
+    private fun getMostUsedRanked(): List<String> {
+        val launches = AppLaunchStore.getInstance(context).getLaunches()
+        return AppSuggestionRanker.rankFrequent(launches, System.currentTimeMillis(), launches.size)
+            .mapNotNull { ComponentKey.fromString(it) }
+            .map { predictionEngine.toStoreKey(it.componentName, it.user) }
     }
 
     @WorkerThread

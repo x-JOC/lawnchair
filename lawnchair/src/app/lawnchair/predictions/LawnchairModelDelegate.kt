@@ -67,7 +67,7 @@ class LawnchairModelDelegate @Inject constructor(
         when (currentPredictionMode()) {
             SystemPredictor -> super.recreatePredictors()
 
-            LawnchairPredictor -> if (Utilities.ATLEAST_Q) {
+            LawnchairPredictor, MostUsedPredictor -> if (Utilities.ATLEAST_Q) {
                 activateLawnchairPredictor()
             } else {
                 clearPredictions()
@@ -91,7 +91,7 @@ class LawnchairModelDelegate @Inject constructor(
                 mWidgetsRecommendationState.requestPredictionUpdate()
             }
 
-            LawnchairPredictor -> if (Utilities.ATLEAST_Q) {
+            LawnchairPredictor, MostUsedPredictor -> if (Utilities.ATLEAST_Q) {
                 updateLawnchairPredictions()
             } else {
                 clearPredictions()

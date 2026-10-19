@@ -36,4 +36,5 @@
     <string name="drawer_suggestion_tab_indicator_title">شكل تحديد التبويب</string>
     <string name="drawer_suggestion_tab_indicator_line">خط</string>
     <string name="drawer_suggestion_tab_indicator_pill">كبسولة</string>
+    <string name="prediction_mode_most_used">الأكثر استخدامًا</string>
 </resources>

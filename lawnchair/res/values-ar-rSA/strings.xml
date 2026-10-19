@@ -55,12 +55,54 @@
     <string name="changes_dialog_commit_info">بواسطة %1$s • %2$s • %3$s</string>
     <!-- Time ago strings -->
     <string name="time_just_now">الآن</string>
-    <string name="time_minutes_ago">%d دقيقة</string>
-    <string name="time_hours_ago">%d ساعة</string>
-    <string name="time_days_ago">%d يوم</string>
-    <string name="time_weeks_ago">%d أسبوع</string>
-    <string name="time_months_ago">%d شهر</string>
-    <string name="time_years_ago">%d سنة</string>
+    <plurals name="time_minutes_ago">
+        <item quantity="zero">منذ %d دقيقة</item>
+        <item quantity="one">منذ دقيقة</item>
+        <item quantity="two">منذ دقيقتين</item>
+        <item quantity="few">منذ %d دقائق</item>
+        <item quantity="many">منذ %d دقيقة</item>
+        <item quantity="other">منذ %d دقيقة</item>
+    </plurals>
+    <plurals name="time_hours_ago">
+        <item quantity="zero">منذ %d ساعة</item>
+        <item quantity="one">منذ ساعة</item>
+        <item quantity="two">منذ ساعتين</item>
+        <item quantity="few">منذ %d ساعات</item>
+        <item quantity="many">منذ %d ساعة</item>
+        <item quantity="other">منذ %d ساعة</item>
+    </plurals>
+    <plurals name="time_days_ago">
+        <item quantity="zero">منذ %d يوم</item>
+        <item quantity="one">منذ يوم</item>
+        <item quantity="two">منذ يومين</item>
+        <item quantity="few">منذ %d أيام</item>
+        <item quantity="many">منذ %d يومًا</item>
+        <item quantity="other">منذ %d يوم</item>
+    </plurals>
+    <plurals name="time_weeks_ago">
+        <item quantity="zero">منذ %d أسبوع</item>
+        <item quantity="one">منذ أسبوع</item>
+        <item quantity="two">منذ أسبوعين</item>
+        <item quantity="few">منذ %d أسابيع</item>
+        <item quantity="many">منذ %d أسبوعًا</item>
+        <item quantity="other">منذ %d أسبوع</item>
+    </plurals>
+    <plurals name="time_months_ago">
+        <item quantity="zero">منذ %d شهر</item>
+        <item quantity="one">منذ شهر</item>
+        <item quantity="two">منذ شهرين</item>
+        <item quantity="few">منذ %d أشهر</item>
+        <item quantity="many">منذ %d شهرًا</item>
+        <item quantity="other">منذ %d شهر</item>
+    </plurals>
+    <plurals name="time_years_ago">
+        <item quantity="zero">منذ %d سنة</item>
+        <item quantity="one">منذ سنة</item>
+        <item quantity="two">منذ سنتين</item>
+        <item quantity="few">منذ %d سنوات</item>
+        <item quantity="many">منذ %d سنة</item>
+        <item quantity="other">منذ %d سنة</item>
+    </plurals>
     <string name="managed_by_lawnchair">يُدار بواسطة Lawnchair</string>
     <!-- When mentioning settings UI -->
     <string name="smartspace_preferences">التفضيلات</string>
@@ -113,14 +155,14 @@
     <string name="folder_list_note">اسحب لليسار للتعديل، أو لليمين للحذف، أو اضغط لتحديث العناصر</string>
     <string name="apps_in_folder_label">إخفاء تطبيقات المجلدات</string>
     <string name="apps_in_folder_description">تُستبعد التطبيقات الموجودة في المجلدات من قوائم التطبيقات</string>
-    <string name="folders_filter_duplicates">إظهار التطبيقات غير المكررة فقط</string>
+    <string name="folders_filter_duplicates">إخفاء التطبيقات الموجودة في مجلدات أخرى</string>
     <string name="my_folder_label">مجلدي</string>
     <string name="sort_active_items_action">فرز العناصر النشطة</string>
     <!-- A11y description -->
     <string name="accessibility_service_description">لتنفيذ بعض الإجراءات عند استخدام إيماءة، مثل قفل هاتفك، يحتاج Lawnchair إلى إذن تسهيل الوصول.\n\nلا يراقب Lawnchair أنشطتك، لكن جميع خدمات تسهيل الوصول تتطلب هذا الامتياز. يتجاهل Lawnchair أي حدث يرسله النظام.\n\nلقفل هاتفك أو فتح شاشة التطبيقات الأخيرة، يستخدم Lawnchair خدمة تسهيل الوصول performGlobalAction.</string>
     <string name="x_with_y_count">%1$s (%2$d)</string>
     <string name="x_by_y">%1$d &#xd7; %2$d</string>
-    <string name="x_and_y">%1$s &amp; %2$s</string>
+    <string name="x_and_y">%1$s و%2$s</string>
     <string name="advanced">متقدم</string>
     <!-- Draggable -->
     <string name="reorderable_move_up">نقل لأعلى</string>
@@ -206,7 +248,7 @@
     <string name="prediction_mode_system">النظام</string>
     <string name="prediction_mode_none">معطل</string>
     <string name="prediction_weighted_usage_stats_label">الاستفادة من بيانات استخدام الجهاز</string>
-    <string name="prediction_weighted_usage_stats_description">استخدم إحصائيات استخدام جهازك لجعل الاقتراحات أكثر دقة</string>
+    <string name="prediction_weighted_usage_stats_description">الاعتماد على إحصائيات استخدام جهازك لتحسين دقة الاقتراحات</string>
     <string name="dismissed_prediction_apps_label">التطبيقات المحظورة</string>
     <string name="dismissed_prediction_apps_label_with_count">التطبيقات المحظورة (%1$d)</string>
     <string name="prediction_system_settings">إدارة اقتراحات النظام</string>
@@ -262,8 +304,8 @@
     <string name="icon_shape_diamond">ماسة</string>
     <string name="icon_shape_egg">بيضة</string>
     <string name="icon_shape_cupertino">iOS</string>
-    <string name="icon_shape_octagon">مثمّن</string>
-    <string name="icon_shape_hexagon">مسدّس</string>
+    <string name="icon_shape_octagon">ثماني</string>
+    <string name="icon_shape_hexagon">سداسي</string>
     <string name="icon_shape_sammy">One UI</string>
     <string name="icon_shape_rounded_square">مربع مستدير الزوايا</string>
     <string name="icon_shape_sharp_square">مربع حاد الزوايا</string>
@@ -283,7 +325,7 @@
     <string name="icon_shape_leaf">ورقة</string>
     <string name="icon_shape_meow">قطة</string>
     <string name="icon_shape_pebble">حصاة</string>
-    <string name="icon_shape_roundedhexagon">مسدّس مستدير الزوايا</string>
+    <string name="icon_shape_roundedhexagon">سداسي مستدير الزوايا</string>
     <string name="icon_shape_stretched">ممدود</string>
     <string name="icon_shape_vessel">وعاء</string>
     <!-- Custom icon shapes -->
@@ -323,7 +365,7 @@
     <string name="font_label">الخط (تجريبي)</string>
     <string name="fontWorkspace">عام</string>
     <string name="fontHeading">العناوين</string>
-    <string name="fontHeadingMedium">عناوين (متوسط)</string>
+    <string name="fontHeadingMedium">العناوين (متوسط)</string>
     <string name="fontBody">النص الأساسي</string>
     <string name="fontBodyMedium">النص الأساسي (متوسط)</string>
     <string name="font_variant_italic">مائل</string>
@@ -543,7 +585,7 @@
     <string name="dogbin_uploading">جارٍ الرفع…</string>
     <string name="bugreport_channel_name">تقارير الأخطاء</string>
     <string name="status_channel_name">حالة الرفع</string>
-    <string name="bugreport_group_summary">%d تقارير جديدة</string>
+    <string name="bugreport_group_summary">تقارير جديدة: %d</string>
     <string name="bugreport_group_summary_multiple">تقارير جديدة متعددة</string>
     <!--
 
@@ -818,7 +860,7 @@
     <string name="permission_label_manage_all_files">إدارة جميع ملفات الجهاز</string>
     <string name="permission_label_read_photos_videos">إذن الوصول إلى الصور ومقاطع الفيديو</string>
     <string name="manage_storage_access_denied_title">تعذّر تفعيل إذن إدارة التخزين</string>
-    <string name="manage_storage_access_denied_description">بسبب سياسة Google Play، لا يمكن لـ <xliff:g id="name" example="My App">%1$s</xliff:g> طلب الوصول الكامل إلى وحدة التخزين هنا. للوصول إلى جميع الملفات، نزّل <xliff:g id="name" example="My App">%1$s</xliff:g> من GitHub. أو يمكنك منح الوصول إلى الصور والفيديوهات والملفات الصوتية كلٌّ على حدة من الإعدادات.</string>
+    <string name="manage_storage_access_denied_description">بسبب سياسة Google Play، لا يمكن لـ <xliff:g id="name" example="My App">%1$s</xliff:g> طلب الوصول الكامل إلى وحدة التخزين هنا. للوصول إلى جميع الملفات، نزّل <xliff:g id="name" example="My App">%1$s</xliff:g> من GitHub. أو يمكنك منح الوصول إلى الصور ومقاطع الفيديو والملفات الصوتية كلٌّ على حدة من الإعدادات.</string>
     <string name="open_permission_settings">فتح الإعدادات</string>
     <string name="grant_requested_permissions">منح الأذونات</string>
     <string name="permissions_needed">الأذونات مطلوبة</string>
@@ -840,7 +882,6 @@
     <string name="drawer_suggestions_empty_new">لا توجد تطبيقات جديدة أو محدّثة</string>
     <string name="drawer_suggestion_tabs_title">تبويبات الاقتراحات</string>
     <string name="drawer_suggestion_tabs_needs_search_bar">يتطلب شريط البحث في درج التطبيقات</string>
-    <string name="drawer_suggestion_tabs_replace_suggestions">يعرض درج التطبيقات تبويبات الاقتراحات بدلًا منها</string>
     <string name="search_history_off_with_suggestion_tabs">غير متاح أثناء عرض تبويبات الاقتراحات في درج التطبيقات</string>
     <string name="max_apps_result_count_all">الكل</string>
     <string name="drawer_suggestion_tabs_description">التطبيقات الأكثر استخدامًا والأخيرة والجديدة أو المحدّثة عند الضغط على مربع البحث في الدرج</string>
@@ -848,4 +889,6 @@
     <string name="drawer_suggestion_tab_indicator_line">خط</string>
     <string name="drawer_suggestion_tab_indicator_pill">كبسولة</string>
     <string name="prediction_mode_most_used">الأكثر استخدامًا</string>
+    <string name="folder_manage_apps">إدارة التطبيقات</string>
+    <string name="settings_pick_a_page">اختر إعدادًا من القائمة</string>
 </resources>

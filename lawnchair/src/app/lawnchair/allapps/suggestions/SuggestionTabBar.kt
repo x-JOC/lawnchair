@@ -38,7 +38,6 @@ import com.android.launcher3.Utilities
 import com.android.launcher3.workprofile.PersonalWorkSlidingTabStrip
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 /**
  * The Frequent / Recent / New tabs at the top of the app drawer. The selected label takes the
@@ -97,17 +96,6 @@ class SuggestionTabBar @JvmOverloads constructor(
     private var pillLeft = 0f
     private var pillRight = 0f
     private var pillAnimator: ValueAnimator? = null
-
-    /**
-     * How much of the indicator is drawn, for the panel's entrance: from 0, nothing, to 1, all of
-     * it. The line grows out from the middle of the label; the pill grows and fades in.
-     */
-    var indicatorReveal = 1f
-        set(value) {
-            if (field == value) return
-            field = value
-            invalidate()
-        }
 
     /**
      * How the selected tab is marked. Changing it moves the indicator right away, and changes the
@@ -410,8 +398,7 @@ class SuggestionTabBar @JvmOverloads constructor(
 
     override fun dispatchDraw(canvas: Canvas) {
         // Behind the labels and their ripples. The line sits a small gap below the label.
-        val reveal = indicatorReveal.coerceIn(0f, 1f)
-        if (pillRight > pillLeft && tabs.isNotEmpty() && reveal > 0f) {
+        if (pillRight > pillLeft && tabs.isNotEmpty()) {
             val tab = tabs[0]
             val labelBottom = (tab.bottom - tab.paddingBottom).toFloat()
             val isPill = indicatorStyle == SuggestionTabIndicator.PILL
@@ -419,9 +406,9 @@ class SuggestionTabBar @JvmOverloads constructor(
             val bottom = if (isPill) labelBottom else top + lineHeight
             val radius = (bottom - top) / 2
             val center = (pillLeft + pillRight) / 2
-            val halfWidth = (pillRight - pillLeft) / 2 * if (isPill) Utilities.mapRange(reveal, PILL_REVEAL_START_SCALE, 1f) else reveal
+            val halfWidth = (pillRight - pillLeft) / 2
             val color = if (isPill) pillColor else lineColor
-            pillPaint.alpha = if (isPill) (Color.alpha(color) * reveal).roundToInt() else Color.alpha(color)
+            pillPaint.alpha = Color.alpha(color)
             canvas.drawRoundRect(center - halfWidth, top, center + halfWidth, bottom, radius, radius, pillPaint)
         }
         super.dispatchDraw(canvas)
@@ -495,9 +482,6 @@ class SuggestionTabBar @JvmOverloads constructor(
 
     private companion object {
         const val PILL_SLIDE_DURATION_MS = 300L
-
-        /** The pill's width, as a share of its full width, when it starts to grow in. */
-        const val PILL_REVEAL_START_SCALE = 0.6f
 
         /** Wide enough for any label on one line, when measuring its height. */
         const val MEASURE_WIDTH = 10_000

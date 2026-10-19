@@ -29,7 +29,6 @@
     <string name="drawer_suggestions_empty_new">لا توجد تطبيقات جديدة أو محدّثة</string>
     <string name="drawer_suggestion_tabs_title">تبويبات الاقتراحات</string>
     <string name="drawer_suggestion_tabs_needs_search_bar">يتطلب شريط البحث في درج التطبيقات</string>
-    <string name="drawer_suggestion_tabs_replace_suggestions">يعرض درج التطبيقات تبويبات الاقتراحات بدلًا منها</string>
     <string name="search_history_off_with_suggestion_tabs">غير متاح أثناء عرض تبويبات الاقتراحات في درج التطبيقات</string>
     <string name="max_apps_result_count_all">الكل</string>
     <string name="drawer_suggestion_tabs_description">التطبيقات الأكثر استخدامًا والأخيرة والجديدة أو المحدّثة عند الضغط على مربع البحث في الدرج</string>

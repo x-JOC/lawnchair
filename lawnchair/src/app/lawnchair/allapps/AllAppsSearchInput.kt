@@ -60,6 +60,9 @@ import app.lawnchair.qsb.rememberAllAppsQsbState
 import app.lawnchair.search.LawnchairRecentSuggestionProvider
 import app.lawnchair.search.algorithms.LawnchairSearchAlgorithm
 import app.lawnchair.theme.color.tokens.ColorTokens
+import app.lawnchair.theme.color.tokens.DayNightColorToken
+import app.lawnchair.theme.color.tokens.setAlpha
+import app.lawnchair.theme.color.tokens.setLStar
 import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.util.ProvideLifecycleState
 import com.android.launcher3.Insettable
@@ -397,11 +400,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
         get() = qsbShell
 
     /** The search bar's fill color, before its background alpha. */
-    fun barFillColor(): Int = if (supportBlur) {
-        ColorTokens.SearchboxHighlightBlur.resolveColor(context)
-    } else {
-        ColorTokens.SearchboxHighlight.resolveColor(context)
-    }
+    fun barFillColor(): Int = (if (supportBlur) BAR_FILL_BLUR else BAR_FILL).resolveColor(context)
 
     /** The radius of the search bar's corners. */
     fun barCornerRadius(): Float = getHotseatQsbCornerRadius(context, BAR_CORNER_RADIUS_FACTOR)
@@ -650,6 +649,16 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     }
 
     private companion object {
+        /**
+         * [ColorTokens.SearchboxHighlight], darker in dark mode, where it showed as a light grey
+         * over the drawer, and less see-through there with blur.
+         */
+        val BAR_FILL = DayNightColorToken(ColorTokens.Neutral2_600.setLStar(98.0), ColorTokens.Neutral1_900)
+        val BAR_FILL_BLUR = DayNightColorToken(
+            ColorTokens.Neutral2_600.setLStar(98.0).setAlpha(.54f),
+            ColorTokens.Neutral1_900.setAlpha(.8f),
+        )
+
         /** The bar's corners are fully rounded. */
         const val BAR_CORNER_RADIUS_FACTOR = 1f
     }

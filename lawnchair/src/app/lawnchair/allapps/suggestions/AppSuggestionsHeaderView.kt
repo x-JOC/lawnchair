@@ -1248,9 +1248,12 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         private const val TAB_FADE_DURATION_MS = 150L
         private const val EMPTY_TEXT_ALPHA = 0.8f
 
-        /** The spring the bar grows on: a little softer than the drawer's own, without a bounce. */
+        /**
+         * The spring the bar grows on: a little softer than the drawer's own, without a visible
+         * bounce. [SpringAnimationBuilder] only takes damping ratios below 1.
+         */
         private const val REVEAL_STIFFNESS = 600f
-        private const val REVEAL_DAMPING_RATIO = 1f
+        private const val REVEAL_DAMPING_RATIO = 0.99f
         private const val REVEAL_MIN_VISIBLE_CHANGE = 0.001f
 
         /** The panel's content fading in as it opens. */

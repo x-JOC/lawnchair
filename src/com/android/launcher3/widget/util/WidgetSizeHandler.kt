@@ -30,7 +30,13 @@ import javax.inject.Inject
 open class WidgetSizeHandler @Inject constructor(@ApplicationContext private val context: Context) {
 
     /**
-     * Updates the size range of a bound widget if it differs from the existing options.
+     * Updates the widget size range if it is not currently the same. This makes two binder calls,
+     * one for getting the existing options, [AppWidgetManager.getAppWidgetOptions] and if it
+     * doesn't match the expected value, another call to update it,
+     * [AppWidgetManager.updateAppWidgetOptions].
+     *
+     * LC-Note: Float spans for subgrid positioning. Also skips widget IDs that aren't bound, which
+     * takes one more binder call.
      *
      * Note that updating the options is a costly call as it wakes up the provider process and
      * causes a full widget update, hence two binder calls are preferable over unnecessarily
@@ -47,6 +53,7 @@ open class WidgetSizeHandler @Inject constructor(@ApplicationContext private val
         }
     }
 
+    // LC-Note: Split out of updateSizeRangesAsync, skips widget IDs without a bound provider.
     internal fun updateSizeRanges(widgetId: Int, info: AppWidgetProviderInfo, spanX: Float, spanY: Float) {
         val widgetManager = AppWidgetManager.getInstance(context)
         // Imported placeholders have allocated IDs but no provider binding yet. Some Android
@@ -62,6 +69,7 @@ open class WidgetSizeHandler @Inject constructor(@ApplicationContext private val
 
     companion object {
 
+        // LC-Note: Unlike AOSP, also compare the min/max size options, not only the size list.
         internal fun needsSizeUpdate(current: Bundle, desired: Bundle): Boolean =
             current.getWidgetSizeList() != desired.getWidgetSizeList() ||
                 listOf(

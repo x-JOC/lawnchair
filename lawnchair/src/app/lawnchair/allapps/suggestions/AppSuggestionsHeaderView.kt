@@ -40,6 +40,7 @@ import androidx.recyclerview.widget.RecyclerView
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.allapps.AllAppsSearchInput
 import app.lawnchair.font.FontManager
+import app.lawnchair.predictions.MostUsedPredictor
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.theme.color.tokens.ColorTokens
@@ -263,10 +264,22 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     private var uiPaused = false
     private val resumeUiUpdates = Runnable { setUiUpdatesPaused(false) }
-    private var selectedTab = lastPickedTab ?: SuggestionTab.FREQUENT
+    private var selectedTab = lastPickedTab ?: defaultTab()
 
     @StringRes
     private var emptyTextRes = 0
+
+    /**
+     * The tab to open on until the user picks one: Frequent, or Recent while the suggested apps
+     * row at the top of the drawer already shows the most used apps.
+     */
+    private fun defaultTab(): SuggestionTab {
+        val prefs = PreferenceManager2.getInstance(context)
+        val rowShowsMostUsed = prefs.enableGlobalPrediction.firstCached() &&
+            prefs.showSuggestedAppsInDrawer.firstCached() &&
+            prefs.predictionMode.firstCached() == MostUsedPredictor
+        return if (rowShowsMostUsed) SuggestionTab.RECENT else SuggestionTab.FREQUENT
+    }
 
     override fun onFinishInflate() {
         super.onFinishInflate()
@@ -892,9 +905,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
                     requestLayout()
                 }
                 sized = true
-                // Until the user picks a tab, open on Frequent, or on the first tab with apps. Not
-                // while the panel shows, so the tab doesn't change under the user.
-                if (lastPickedTab == null) selectedTab = snapshot.firstNonEmptyTab(SuggestionTab.FREQUENT)
+                // Until the user picks a tab, open on the default one, or on the first tab with
+                // apps. Not while the panel shows, so the tab doesn't change under the user.
+                if (lastPickedTab == null) selectedTab = snapshot.firstNonEmptyTab(defaultTab())
             }
             if (sized) bindSelectedTab(animate = false)
         }

@@ -15,6 +15,11 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE, sdk = [28])
 class SubgridOverlapTest {
+    private fun track(info: ItemInfo, halfStepped: GridOccupancy): Boolean =
+        LoaderCursor::class.java.getDeclaredMethod(
+            "trackSubgridOverlap", ItemInfo::class.java, GridOccupancy::class.java,
+        ).apply { isAccessible = true }.invoke(null, info, halfStepped) as Boolean
+
     private fun item(
         cellX: Int,
         subX: Int = 0,
@@ -34,7 +39,7 @@ class SubgridOverlapTest {
         val occupancy = GridOccupancy(5, 5)
         val halfStepped = GridOccupancy(5, 5)
         return items.map { info ->
-            val subgridOverlap = LoaderCursor.trackSubgridOverlap(info, halfStepped)
+            val subgridOverlap = track(info, halfStepped)
             if (occupancy.isRegionVacant(info.cellX, info.cellY, info.spanX, info.spanY)) {
                 occupancy.markCells(info, true)
                 true

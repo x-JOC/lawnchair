@@ -24,6 +24,8 @@ import android.view.ViewGroup;
 
 import androidx.annotation.Nullable;
 
+import com.android.launcher3.model.data.ItemInfo;
+
 /**
  * Represents the logic of where a view is in a CellLayout and its size
  */
@@ -40,17 +42,16 @@ public class CellLayoutLayoutParams extends ViewGroup.MarginLayoutParams {
     private int mTmpCellY;
 
     /**
-     * Lawnchair: Subgrid positioning. Half-cell offsets (0 or 1) added to the cell position, and
-     * extra half-cells (0 or 1) added to the span. Non-zero only on the workspace when the
-     * subgrid-positioning preference is enabled; see {@link #setup}.
+     * LC-Note: Subgrid positioning. Half-cell steps of the position and span, see
+     * {@link ItemInfo#subX} and {@link ItemInfo#subSpanX}. Non-zero only on the workspace.
      */
-    private int mSubX;
+    public int subX;
 
-    private int mSubY;
+    public int subY;
 
-    private int mSubSpanX;
+    public int subSpanX;
 
-    private int mSubSpanY;
+    public int subSpanY;
 
     /**
      * Indicates that the temporary coordinates should be used to layout the items
@@ -111,10 +112,11 @@ public class CellLayoutLayoutParams extends ViewGroup.MarginLayoutParams {
         this.mTmpCellX = source.getTmpCellX();
         this.mTmpCellY = source.getTmpCellY();
         this.useTmpCoords = source.useTmpCoords;
-        this.mSubX = source.mSubX;
-        this.mSubY = source.mSubY;
-        this.mSubSpanX = source.mSubSpanX;
-        this.mSubSpanY = source.mSubSpanY;
+        // LC-Note: Subgrid positioning
+        this.subX = source.subX;
+        this.subY = source.subY;
+        this.subSpanX = source.subSpanX;
+        this.subSpanY = source.subSpanY;
     }
 
     public CellLayoutLayoutParams(int cellX, int cellY, int cellHSpan, int cellVSpan) {
@@ -146,13 +148,12 @@ public class CellLayoutLayoutParams extends ViewGroup.MarginLayoutParams {
             int rowCount, float cellScaleX, float cellScaleY, Point borderSpace,
             @Nullable Rect inset) {
         if (isLockedToGrid) {
-            // Lawnchair: Subgrid positioning — half-cell offsets/spans are folded in as floats and
-            // rounded once at the end. When all sub-values are 0 (feature off / non-workspace) this
-            // is byte-identical to the original integer arithmetic.
-            final float myCellHSpan = cellHSpan + mSubSpanX * 0.5f;
-            final float myCellVSpan = cellVSpan + mSubSpanY * 0.5f;
-            float myCellX = (useTmpCoords ? getTmpCellX() : getCellX()) + mSubX * 0.5f;
-            float myCellY = (useTmpCoords ? getTmpCellY() : getCellY()) + mSubY * 0.5f;
+            // LC-Note: Subgrid positioning, in float cells. With no half steps this gives the
+            // same result as the integer math.
+            final float myCellHSpan = cellHSpan + subSpanX * 0.5f;
+            final float myCellVSpan = cellVSpan + subSpanY * 0.5f;
+            float myCellX = (useTmpCoords ? getTmpCellX() : getCellX()) + subX * 0.5f;
+            float myCellY = (useTmpCoords ? getTmpCellY() : getCellY()) + subY * 0.5f;
 
             if (invertHorizontally) {
                 myCellX = colCount - myCellX - myCellHSpan;
@@ -237,36 +238,14 @@ public class CellLayoutLayoutParams extends ViewGroup.MarginLayoutParams {
         this.mTmpCellY = tmpCellY;
     }
 
-    /** Lawnchair: Subgrid positioning — half-cell offsets/spans (each 0 or 1). */
-    public int getSubX() {
-        return mSubX;
-    }
-
-    public void setSubX(int subX) {
-        this.mSubX = subX;
-    }
-
-    public int getSubY() {
-        return mSubY;
-    }
-
-    public void setSubY(int subY) {
-        this.mSubY = subY;
-    }
-
-    public int getSubSpanX() {
-        return mSubSpanX;
-    }
-
-    public void setSubSpanX(int subSpanX) {
-        this.mSubSpanX = subSpanX;
-    }
-
-    public int getSubSpanY() {
-        return mSubSpanY;
-    }
-
-    public void setSubSpanY(int subSpanY) {
-        this.mSubSpanY = subSpanY;
+    /**
+     * LC-Note: Subgrid positioning. Copies the half steps of {@code info}, or clears them when
+     * {@code enabled} is false.
+     */
+    public void setSubgrid(ItemInfo info, boolean enabled) {
+        subX = enabled ? info.subX : 0;
+        subY = enabled ? info.subY : 0;
+        subSpanX = enabled ? info.subSpanX : 0;
+        subSpanY = enabled ? info.subSpanY : 0;
     }
 }

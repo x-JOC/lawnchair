@@ -356,6 +356,10 @@ public class LauncherWidgetHolder {
         startBindFlow(activity, appWidgetId, info, requestCode, null);
     }
 
+    /**
+     * LC-Note: Same as above, but also passes {@code options} to the bind permission dialog, so a
+     * widget bound there starts with its (possibly half-cell) size options.
+     */
     public void startBindFlow(@NonNull BaseActivity activity,
             int appWidgetId, @NonNull AppWidgetProviderInfo info, int requestCode,
             @Nullable Bundle options) {
@@ -368,6 +372,7 @@ public class LauncherWidgetHolder {
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.getProfile());
+        // LC-Note: Pass the options bundle (an AOSP TODO).
         if (options != null) {
             intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS, options);
         }

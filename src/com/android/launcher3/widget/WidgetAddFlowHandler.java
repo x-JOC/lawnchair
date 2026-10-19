@@ -57,6 +57,7 @@ public class WidgetAddFlowHandler implements Parcelable {
 
     public void startBindFlow(Launcher launcher, int appWidgetId, ItemInfo info, int requestCode) {
         launcher.setWaitingForResult(PendingRequestArgs.forWidgetInfo(appWidgetId, this, info));
+        // LC-Note: Pass the rendered (possibly half-cell) size to the bind dialog.
         launcher.getAppWidgetHolder()
                 .startBindFlow(launcher, appWidgetId, mProviderInfo, requestCode,
                         WidgetSizes.getWidgetSizeOptions(launcher, mProviderInfo.provider,

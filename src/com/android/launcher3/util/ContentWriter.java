@@ -21,8 +21,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.UserHandle;
 
-import androidx.annotation.VisibleForTesting;
-
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherSettings;
 import com.android.launcher3.icons.BitmapInfo;
@@ -65,28 +63,19 @@ public class ContentWriter {
         return this;
     }
 
+    /** LC-Note: Subgrid positioning, for half-cell (REAL) values. */
     public ContentWriter put(String key, Float value) {
         mValues.put(key, value);
         return this;
     }
 
     /**
-     * Lawnchair: Subgrid positioning. Stores {@code base + 0.5} as a float (REAL) when a half-step is
-     * present, otherwise the plain integer. Legacy/integer readers truncate the REAL back to the base
-     * cell, so this is backward compatible with no schema change.
-     *
-     * <p>The half-step is only written while subgrid positioning is enabled. With it off, items are
-     * laid out on whole cells, and a whole-cell write (resize, reorder, move) must not re-persist a
-     * stale half-step that would move the item once the setting is turned back on.
+     * LC-Note: Subgrid positioning. Writes {@code base + sub * 0.5} as a REAL, so the schema doesn't
+     * change. The half step is only written while subgrid positioning is on, so whole-cell writes
+     * with it off don't keep a stale one.
      */
     public ContentWriter putSubgrid(String key, int base, int sub) {
-        return putSubgrid(key, base, sub, sub != 0 && isSubgridEnabled());
-    }
-
-    /** Lawnchair: Subgrid positioning. See {@link #putSubgrid(String, int, int)}. */
-    @VisibleForTesting
-    public ContentWriter putSubgrid(String key, int base, int sub, boolean subgridEnabled) {
-        if (sub != 0 && subgridEnabled) {
+        if (sub != 0 && isSubgridEnabled()) {
             return put(key, base + sub * 0.5f);
         }
         return put(key, base);

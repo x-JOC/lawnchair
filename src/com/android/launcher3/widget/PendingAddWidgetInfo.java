@@ -77,6 +77,7 @@ public class PendingAddWidgetInfo extends PendingAddItemInfo {
     }
 
     public Bundle getDefaultSizeOptions(Context context) {
+        // LC-Note: Subgrid positioning, include the half-cell span.
         return WidgetSizes.getWidgetSizeOptions(context, componentName, spanX + subSpanX * 0.5f,
                 spanY + subSpanY * 0.5f);
     }

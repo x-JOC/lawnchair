@@ -24,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import app.lawnchair.predictions.LawnchairPredictionManager
 import app.lawnchair.predictions.LawnchairPredictor
+import app.lawnchair.predictions.MostUsedPredictor
 import app.lawnchair.predictions.NoPredictor
 import app.lawnchair.predictions.PredictionMode
 import app.lawnchair.predictions.SystemPredictor
@@ -116,7 +117,7 @@ private fun AppPredictionsFeature(
         when (predictionModeAdapter.state.value) {
             SystemPredictor -> SystemSuggestionsPreference()
 
-            LawnchairPredictor -> LawnchairPredictionSettings(
+            LawnchairPredictor, MostUsedPredictor -> LawnchairPredictionSettings(
                 weightedUsageStatsAdapter = weightedUsageStatsAdapter,
                 hasUsageStatsPermission = hasUsageStatsPermission.value,
                 dismissedPredictionAppsSubtitle = dismissedPredictionAppsSubtitle,

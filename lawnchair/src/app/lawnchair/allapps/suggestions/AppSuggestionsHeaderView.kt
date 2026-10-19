@@ -40,6 +40,7 @@ import androidx.recyclerview.widget.RecyclerView
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.allapps.AllAppsSearchInput
 import app.lawnchair.font.FontManager
+import app.lawnchair.predictions.MostUsedPredictor
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.theme.color.tokens.ColorTokens
@@ -263,10 +264,22 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
 
     private var uiPaused = false
     private val resumeUiUpdates = Runnable { setUiUpdatesPaused(false) }
-    private var selectedTab = lastPickedTab ?: SuggestionTab.FREQUENT
+    private var selectedTab = lastPickedTab ?: defaultTab()
 
     @StringRes
     private var emptyTextRes = 0
+
+    /**
+     * The tab to open on until the user picks one: Frequent, or Recent while the suggested apps
+     * row at the top of the drawer already shows the most used apps.
+     */
+    private fun defaultTab(): SuggestionTab {
+        val prefs = PreferenceManager2.getInstance(context)
+        val rowShowsMostUsed = prefs.enableGlobalPrediction.firstCached() &&
+            prefs.showSuggestedAppsInDrawer.firstCached() &&
+            prefs.predictionMode.firstCached() == MostUsedPredictor
+        return if (rowShowsMostUsed) SuggestionTab.RECENT else SuggestionTab.FREQUENT
+    }
 
     override fun onFinishInflate() {
         super.onFinishInflate()
@@ -315,7 +328,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         val left = input.left + input.translationX + bar.left + bar.translationX
         val top = input.top + input.translationY + bar.top + bar.translationY
         barBottom = top + bar.height
-        val tabsExtent = if (tabsShown && !tabsReturning) max(0f, this.top + translationY + height - barBottom) * reveal.coerceIn(0f, MAX_REVEAL) else 0f
+        val tabsExtent = if (tabsShown && !tabsReturning) max(0f, this.top + translationY + height - barBottom) * reveal.coerceIn(0f, 1f) else 0f
         shapeRect.set(left, top, left + bar.width, barBottom + max(tabsExtent, resultsExtent))
         shapeRadius = min(input.barCornerRadius(), bar.height / 2f)
         shapePath.rewind()
@@ -892,9 +905,9 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
                     requestLayout()
                 }
                 sized = true
-                // Until the user picks a tab, open on Frequent, or on the first tab with apps. Not
-                // while the panel shows, so the tab doesn't change under the user.
-                if (lastPickedTab == null) selectedTab = snapshot.firstNonEmptyTab(SuggestionTab.FREQUENT)
+                // Until the user picks a tab, open on the default one, or on the first tab with
+                // apps. Not while the panel shows, so the tab doesn't change under the user.
+                if (lastPickedTab == null) selectedTab = snapshot.firstNonEmptyTab(defaultTab())
             }
             if (sized) bindSelectedTab(animate = false)
         }
@@ -931,24 +944,16 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     }
 
     /**
-     * Opens the panel: the search bar grows down to hold it on a gentle spring while its content
-     * slides down into place, the hairline and the tabs fade in, the selected tab's indicator
-     * draws in and the icons pop in one after another in reading order. Coming back from a close
-     * that has only just started, the content simply fades back in.
+     * Opens the panel in one motion: the search bar grows down to hold it, without a bounce, while
+     * its content fades in as one piece and slides down into place with it. Coming back from a
+     * close that has only just started, the content fades back in from where it was.
      */
     private fun animateIn() {
         cancelAnimations()
-        val fresh = reveal < 0.5f
-        if (fresh) {
+        if (reveal < 0.5f) {
             tabBar.alpha = 0f
-            tabBar.indicatorReveal = 0f
+            content.alpha = 0f
             setHairlineAlpha(0f)
-            // The empty-tab message fades in as a whole; icons each on their own.
-            content.alpha = if (emptyText.isVisible) 0f else 1f
-            grid.setEntranceTime(0f)
-        } else {
-            tabBar.indicatorReveal = 1f
-            grid.endEntrance()
         }
         // The bar grows out of the search bar's own background, or fades in where there was none,
         // for example when the query is cleared.
@@ -968,26 +973,16 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
             .build(this, REVEAL)
             .also { it.start() }
 
-        val duration = if (fresh) max(ENTRANCE_INDICATOR_DELAY_MS + ENTRANCE_INDICATOR_DURATION_MS, ENTRANCE_ICONS_DELAY_MS + grid.entranceDuration()) else RETURN_DURATION_MS
-        entranceAnimator = ValueAnimator.ofFloat(0f, duration.toFloat()).apply {
-            this.duration = duration
+        entranceAnimator = ValueAnimator.ofFloat(0f, ENTRANCE_DURATION_MS.toFloat()).apply {
+            duration = ENTRANCE_DURATION_MS
             interpolator = Interpolators.LINEAR
             addUpdateListener { animator ->
                 val time = animator.animatedValue as Float
-                setFillAlpha(Utilities.mapRange(progressAt(time, 0L, FILL_FADE_DURATION_MS, Interpolators.LINEAR), startFillAlpha, 1f))
-                if (fresh) {
-                    val tabs = progressAt(time, ENTRANCE_TABS_DELAY_MS, ENTRANCE_TABS_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE)
-                    tabBar.alpha = tabs
-                    setHairlineAlpha(tabs)
-                    tabBar.indicatorReveal = progressAt(time, ENTRANCE_INDICATOR_DELAY_MS, ENTRANCE_INDICATOR_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE)
-                    content.alpha = Utilities.mapRange(progressAt(time, ENTRANCE_ICONS_DELAY_MS, ENTRANCE_TABS_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE), startContentAlpha, 1f)
-                    grid.setEntranceTime(time - ENTRANCE_ICONS_DELAY_MS)
-                } else {
-                    val progress = Interpolators.EMPHASIZED_DECELERATE.getInterpolation(animator.animatedFraction)
-                    tabBar.alpha = Utilities.mapRange(progress, startTabAlpha, 1f)
-                    content.alpha = Utilities.mapRange(progress, startContentAlpha, 1f)
-                    setHairlineAlpha(Utilities.mapRange(progress, startHairlineAlpha, 1f))
-                }
+                setFillAlpha(Utilities.mapRange(progressAt(time, FILL_FADE_DURATION_MS, Interpolators.LINEAR), startFillAlpha, 1f))
+                val progress = progressAt(time, ENTRANCE_DURATION_MS, Interpolators.EMPHASIZED_DECELERATE)
+                tabBar.alpha = Utilities.mapRange(progress, startTabAlpha, 1f)
+                content.alpha = Utilities.mapRange(progress, startContentAlpha, 1f)
+                setHairlineAlpha(Utilities.mapRange(progress, startHairlineAlpha, 1f))
             }
             addListener(
                 object : AnimationSuccessListener() {
@@ -1013,8 +1008,6 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         setReveal(1f)
         setFillAlpha(1f)
         setHairlineAlpha(1f)
-        tabBar.indicatorReveal = 1f
-        grid.endEntrance()
         tabBar.alpha = 0f
         content.alpha = 0f
         entranceAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -1118,10 +1111,8 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
     /** Shows the panel's content as usual, after or without an animation. */
     private fun resetContent() {
         tabBar.alpha = 1f
-        tabBar.indicatorReveal = 1f
         content.alpha = 1f
         setHairlineAlpha(1f)
-        grid.endEntrance()
     }
 
     /**
@@ -1257,20 +1248,13 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
         private const val TAB_FADE_DURATION_MS = 150L
         private const val EMPTY_TEXT_ALPHA = 0.8f
 
-        /** The spring the bar grows on: a little softer than the drawer's own, barely bouncing. */
+        /** The spring the bar grows on: a little softer than the drawer's own, without a bounce. */
         private const val REVEAL_STIFFNESS = 600f
-        private const val REVEAL_DAMPING_RATIO = 0.82f
-
-        /** How far past its full height the bar may grow while it bounces into place. */
-        private const val MAX_REVEAL = 1.1f
+        private const val REVEAL_DAMPING_RATIO = 1f
         private const val REVEAL_MIN_VISIBLE_CHANGE = 0.001f
 
-        // When each part of the panel's content comes in, from the start of its opening.
-        private const val ENTRANCE_TABS_DELAY_MS = 60L
-        private const val ENTRANCE_TABS_DURATION_MS = 220L
-        private const val ENTRANCE_INDICATOR_DELAY_MS = 140L
-        private const val ENTRANCE_INDICATOR_DURATION_MS = 300L
-        private const val ENTRANCE_ICONS_DELAY_MS = 120L
+        /** The panel's content fading in as it opens. */
+        private const val ENTRANCE_DURATION_MS = 200L
 
         /** The fill fading in, when the search bar had no background of its own. */
         private const val FILL_FADE_DURATION_MS = 100L
@@ -1311,7 +1295,7 @@ class AppSuggestionsHeaderView @JvmOverloads constructor(
          * Progress, eased by [interpolator], of a part of an animation that starts [delay]
          * milliseconds in and lasts [duration], at [time] milliseconds into the animation.
          */
-        private fun progressAt(time: Float, delay: Long, duration: Long, interpolator: Interpolator): Float = interpolator.getInterpolation(((time - delay) / duration).coerceIn(0f, 1f))
+        private fun progressAt(time: Float, duration: Long, interpolator: Interpolator): Float = interpolator.getInterpolation((time / duration).coerceIn(0f, 1f))
 
         /** Strength of the shadow under the grown bar. */
         private const val SHADOW_ALPHA_LIGHT = 0x29

@@ -18,12 +18,14 @@ sealed class PredictionMode(
         fun fromString(value: String): PredictionMode = when (value) {
             "system" -> SystemPredictor
             "lawnchair" -> LawnchairPredictor
+            "most_used" -> MostUsedPredictor
             else -> NoPredictor
         }
 
         fun values(): List<PredictionMode> = listOf(
             SystemPredictor,
             LawnchairPredictor,
+            MostUsedPredictor,
             NoPredictor,
         )
     }
@@ -43,6 +45,18 @@ object SystemPredictor : PredictionMode(R.string.prediction_mode_system) {
 object LawnchairPredictor : PredictionMode(R.string.prediction_mode_lawnchair) {
 
     override fun toString() = "lawnchair"
+
+    override fun isAvailable(context: Context) = true
+}
+
+/**
+ * [LawnchairPredictor], with the apps opened most from the launcher first: the launch history of
+ * the app drawer's suggestion tabs ([app.lawnchair.allapps.suggestions.AppLaunchStore]), which
+ * needs no permission. The latest launches follow, as in [LawnchairPredictor].
+ */
+object MostUsedPredictor : PredictionMode(R.string.prediction_mode_most_used) {
+
+    override fun toString() = "most_used"
 
     override fun isAvailable(context: Context) = true
 }
